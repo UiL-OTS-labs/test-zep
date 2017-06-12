@@ -1,0 +1,269 @@
+#!/usr/bin/env zep-2.0
+
+/*************** importing plugins *********/
+plugin zep_display;
+plugin zep_string;
+plugin zep_struct;
+plugin zep_iobeexybox;
+
+/*************** Zep specific **************/
+// Continue is normally defined in defs.zm or since Zep-2.0 in std_control.zm
+const int CONTINUE          = 0;
+
+/*************** global variables **********/
+int g_width                 = 500;
+int g_height                = 500;
+int g_fps                   = 60;
+int g_nframes               = 1;        // Number of frames between stimulus
+                                        // color.
+int g_tot_frames            = 60 * 60;  // One minute.
+
+bool g_terminate_on_finish  = true;
+
+// the pins to communicate with teensy device.
+const int START_EXPERIMENT_PIN  = 0;
+const int STOP_EXPERIMENT_PIN   = 1;
+const int START_BLACK_PIN       = 2;
+const int START_WHITE_PIN       = 3;
+
+/*************** utilities ********/
+
+// Returns duration since start of the experiment
+dur rel_time (time event_time)
+{
+    return int (event_time - zero_time());
+}
+
+int rel_time_int (time event_time)
+{
+    return int (rel_time(event_time));
+}
+
+real rel_time_real (time event_time)
+{
+    return real(rel_time(event_time));
+}
+
+/*************** objects *********/
+
+BeexyBox box
+{
+    on_event:cleanup()
+    {
+        close();
+    }
+}
+
+RawWindow test_window
+{
+    on_event:init()
+    {
+        position_and_size = 0, 0, 500, 500;
+        // disable for testing with zep-1.4
+        //alignment = ALIGN_CENTER, ALIGN_CENTER;
+
+        if (os_name() == "Windows")
+        {
+            blit_full_window = true;
+//            flush_after_blit = true;  // don't use
+        }
+        else
+        {
+            flush_after_blit = true;
+        }
+ 
+        show();
+    }
+
+    on_event:show()
+    {
+        // Get keyboard focus when shown.
+        activate();
+    }
+}
+
+/**
+ * The test_page presents one big grayish screens with 3 black/white rectangles.
+ *
+ * The rectangles overlap each other in space but are presented interleaved
+ * in time. The black rectangles are presented first and then the white's.
+ */
+Page test_page
+{
+
+    on_event:init()
+    {
+        println("The next keys can be pressed for the following functions:\n\n");
+        println("s\tStart the task.\n");
+        println("Esc\tstop the experiment\n");
+
+        println("F1\tput the window on the first head.");
+        println("F2\tput the window on the second head.");
+        println("F3\tput the window on the third head.");
+        println("F4\tput the window on the fourth head.");
+        println("F5\tswitch window width.");
+        println("F6\tswitch window height.");
+        println("F7\ttoggle blit full window (true for windows by default).");
+        println("F8\ttoggle flush window after blit.");
+        println("F10\t(un)maximize window.");
+        println("F11\ttoggle full screen window.");
+    }
+
+    on_event:key_press()
+    {
+        if (input_key == KEY_Escape)
+        {
+            terminate;
+        }
+        else if (input_key == KEY_F1)
+        {
+            test_window.target_head = 0;
+        }
+        else if (input_key == KEY_F2)
+        {
+            if (display_device.num_heads >= 2)
+                test_window.target_head = 1;
+        }
+        else if (input_key == KEY_F3)
+        {
+            if (display_device.num_heads >= 3)
+                test_window.target_head = 2;
+        }
+        else if (input_key == KEY_F4)
+        {
+            if (display_device.num_heads >= 4)
+                test_window.target_head = 3;
+        }
+        else if (input_key == KEY_F5)
+        {
+            if (test_window.width >= display_device.width / 2)
+                test_window.size = 200, test_window.height;
+            else
+                test_window.size = display_device.width, test_window.height;
+        }
+        else if (input_key == KEY_F6)
+        {
+            if (test_window.height >= display_device.height / 2)
+                test_window.size = test_window.width, 100;
+            else
+                test_window.size = test_window.width, display_device.height;
+        }
+        else if (input_key == KEY_F7)
+        {
+            if (input_modifiers & INPUT_MOD_CONTROL)
+                test_window.blit_full_window = true;
+            else
+                test_window.blit_full_window = false;
+        }
+        else if (input_key == KEY_F8)
+        {
+            if (input_modifiers & INPUT_MOD_CONTROL)
+                test_window.flush_after_blit = true;
+            else
+                test_window.flush_after_blit = false;
+        }
+        else if (input_key == KEY_F10)
+        {
+            test_window.is_maximized = !test_window.is_maximized;
+        }
+        else if (input_key == KEY_F11)
+        {
+            test_window.is_fullscreen = !test_window.is_fullscreen;
+        }
+        else if (input_key == 's' || input_key == 'S')
+        {
+            start_experiment();
+        }
+    }
+
+    CanvasGadget canvas
+    {
+        on_event:init()
+        {
+            fill_pattern_color  = color:white;
+        }
+
+        RectangleShape rect // upper left corner
+        {
+            on_event:init()
+            {
+                width               = g_width;
+                height              = g_height;
+                fill_pattern_color  = rgbi:0/0/0;
+            }
+
+            on_event:pre_update()
+            {
+                if ((relative_frame / g_nframes) % 2 == 0)
+                    is_visible = true;
+                else
+                    is_visible = false;
+            }
+
+            on_event:finish()
+            {
+                if (g_terminate_on_finish)
+                    terminate;
+            }
+        }
+    }
+
+    void start_experiment ()
+    {
+        int start_frame = display_device.current_frame_counter[
+                test_window.target_head
+                ];
+
+        canvas.rect.start_fr(start_frame + g_fps/2 , g_tot_frames);
+
+        // Prepare the Teensy for measurement. Start +/- one frame before
+        // measurement.
+        println("Expected start time = " + rel_time(canvas.rect.expected_start_time));
+        box.start_trigger(
+            0,
+            canvas.rect.expected_start_time - 
+                display_device.refresh_interval[test_window.target_head],
+            canvas.rect.expected_finish_time - canvas.rect.expected_start_time +
+                100ms // allow 100ms drift.
+            );
+    }
+}
+
+start()
+{
+    test_window.show_page(test_page);
+    test_page.hide_cursor();
+
+    display_device.open();
+    if (error())
+        terminate "Unable to open display device\n";
+    
+    if (have_option("device")) {
+        string device; 
+        device = option_value("device");
+        box.open(device);
+    }
+    else {
+        box.open();
+    }
+
+    if (have_option("nframes")) {
+        g_nframes = int(option_value("nframes"));
+        if (g_nframes <= 0)
+            terminate "option nframes has invalid value, nframes must be > 0\n";
+    }
+
+    if (have_option("fps")) {
+       g_fps = int(option_value("fps"));
+       if (g_fps <= 0)
+           terminate "option fps has invalid value, fps must be > 0\n";
+    }
+
+    // just in case
+    box.stop_trigger(0);
+
+
+    if (!box.is_open)
+        terminate "Unable to open BeexyBox.\n";
+}
+

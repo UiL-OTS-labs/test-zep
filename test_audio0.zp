@@ -1,0 +1,195 @@
+#!/usr/bin/env zep-2.0
+
+plugin zep_sound;
+plugin zep_iobeexybox;
+
+//default interstimulus duration
+dur g_isi = dur(16.0 + 2.0/3.0);
+dur g_test_dur = 60s;
+
+const int CONTINUE = 0;
+
+const int g_measure_trig    = 0;    // Trigger teensy to start.
+const int g_sound_trig      = 1;    // Trigger teensy to measure stimulus.
+
+BeexyBox beexybox
+{
+    init()
+    {
+        // Open a specific BeexyBox
+//        open("/dev/ttyACM0");
+//        open("COM4");
+        // Open the first BeexyBox
+        open();
+        if (error()) terminate;
+
+    }
+
+    cleanup()
+    {
+        close();
+    }
+}
+
+
+SoundPlaybackDevice output_device
+{
+    init()
+    {
+        int nch = 2;
+        int fs = RATE_48000;
+//        int fs = RATE_192000;
+        if (have_option("nch"))
+        {
+            nch = int(option_value("nch"));
+            if (nch < 2 || nch > 8) terminate "nch must be: 2 <= nch <=8\n";
+        }
+        if (have_option("fs"))
+        {
+            fs = int(option_value("fs"));
+            if (fs < RATE_8000 || fs > RATE_192000) terminate "fs must be: 8000 <= fs <=192000\n";
+        }
+
+        open(nch, fs);
+        if (error()) terminate "Unable to open sound device.\n";
+
+        //hardware_latency = 3.3ms;
+    }
+}
+
+
+SoundPlayback stimulus
+{
+    init()
+    {
+        device = output_device;
+
+        // Must be done after opening the device and after connecting to
+        // the device (in order to assume correct sample rate).
+        clip.duration = 1ms;
+    }
+
+    on_event:finish()
+    {
+        done(CONTINUE);
+    }
+
+    void done(int val)
+    {
+        abort();
+        signal_target(CONTINUE);
+    }
+
+    void set_target(Object obj)
+    {
+        target = obj;
+    }
+
+    BeepGenerator clip
+    {
+        init()
+        {
+            //frequency[0] = 880;
+            //frequency[0] = 1000;
+            //frequency[0] = 5000;
+            frequency[0] = 10000;
+            scaling  [0] = 0.99;
+        }
+    }
+}
+
+Timer terminator {
+
+    on_event:expire()
+    {
+        terminate;
+        beexybox.stop_trigger(g_measure_trig);
+        beexybox.stop_trigger(g_sound_trig);
+    }
+
+}
+
+// Starts the trigger.
+// We can't do this from the block of trials directly, since starting a
+// trigger there would overwrite the trigger of the last trigger
+Timer trigger {
+
+    time trigger_start;
+    dur  trigger_dur;
+
+    on_event:expire()
+    {
+        beexybox.start_trigger(g_sound_trig, trigger_start, trigger_dur);
+    }
+
+    void start_trigger(time start, dur trig_dur)
+    {
+        trigger_start   = start;
+        trigger_dur     = trig_dur;
+        start(trigger_start - 5ms);
+    }
+}
+
+/**
+ * The trials block presents as the name suggests, the trials. It calculates
+ * how many are needed given the length of the sound stimuli and the total
+ * duration of the test.
+ */
+Block trials
+{
+    on_event:entry()
+    {
+        num_cycles = int(g_test_dur / (real(g_isi) * 2));
+        stimulus.clip.duration = g_isi;
+    }
+
+    on_event:exit()
+    {
+        terminator.start(stimulus.finish_time + 1s);
+    }
+
+    /**
+     * Presents first g_isi of inter stimulus interval and then with the same
+     * duration a stimulus will be played.
+     */
+    Trial trial {
+
+        on_event:entry()
+        {
+            stimulus.set_target(this);
+            stimulus.start(reference_time + g_isi);
+
+            /* Start the trigger a little bit to stimulus onset and stop
+             * the trigger a little bit after stimulus offset.
+             * Done via a timer, since BeexyBox doesn't like starting
+             * and stopping a time that is still running, or actually, the
+             * BeexyBox doesn't mind, but just doesn't exibit the desired
+             * behavior. When this trigger is started in a timer we can
+             * avoid overlapping beexybox triggers.
+             * The Teensy will record the first and last voltage flank.
+             */
+            trigger.start_trigger(
+                    stimulus.expected_start_time - 2ms,
+                    stimulus.duration + 7ms
+                    );
+        }
+    }
+}
+
+start()
+{
+    beexybox.stop_trigger(g_measure_trig);
+    beexybox.start_trigger(g_measure_trig, now(), g_test_dur + 1s);
+
+    if (have_option("hwlatency"))
+        output_device.hardware_latency = dur(option_value("hwlatency"));
+
+    if (have_option("isi"))
+        g_isi = dur(option_value("isi"));
+
+    if (have_option("freq"))
+        stimulus.clip.frequency[0] = int(option_value("freq"));
+
+    trials.enter();
+}
+
