@@ -1,21 +1,32 @@
 
+#ifdef _WIN32
+// Hopefully this stops VisualStudio from nagging about functions
+// not deprecated in C standards.
+#define _CRT_SECURE_NO_DEPRECATE
+#endif
+
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <termios.h>
 #include <signal.h>
-#include <poll.h>
 #include <stdint.h>
 #include <assert.h>
-#include <getopt.h>
 
+#include "parse-cmd.h"
+#include "libteensy.h"
+
+/*On windows eeg "COM1"*/
 char device[1024]       = "/dev/ttyACM0";
 char output_fn[1024]    = "./screen-output.txt";
 
-const char* optstr = "d:o:";
+//const char* optstr = "d:o:";
+cmd_option arguments[] = {
+    {'d', "device",             OPT_STR,    0},
+    {'o', "output-filename",    OPT_STR,    0},
+    {'v', "verbose",            OPT_FLAG,   0},
+    {'h', "help",               OPT_FLAG,   0}              
+};
 
 volatile int interrupted = 0;
 int stop = 0;
@@ -23,6 +34,7 @@ int stop = 0;
 int verbose = 0;
 
 void signal_handler(int signal) {
+    (void)signal;
     interrupted = 1;
 }
 
@@ -94,43 +106,44 @@ int parse_package()
     return 0;
 }
 
-int read_package(int fd) {
+int read_package(TeensyDevice* teensy) {
     int ret;
     int nread; // num bytes read from last read.
     int poll_ms = 1000;
     int nb_tot_read = 0;
 
-    struct pollfd p;
-    p.fd = fd;
-    p.events = POLLIN;
+    //struct pollfd p;
+    //p.fd = fd;
+    //p.events = POLLIN;
 
-    ret = poll(&p, 1, poll_ms);
+    ret = teensy_poll(teensy, poll_ms);
 
     // timeout
     if (ret <= 0)
         return 0;
 
-    if (p.revents & POLLIN) {
-        nread = read(fd, package.buffer, 1);
-        if (nread < 0)
-            return nread;
-        nb_tot_read++;
-        package.size = package.buffer[0];
-    }
-    if (p.revents & POLLHUP) {
-        fprintf(stderr,  "Teensy hanged up.\n");
-        return -1;
-    }
+    //if (p.revents & POLLIN) {
+    //    nread = read(fd, package.buffer, 1);
+    //    if (nread < 0)
+    //        return nread;
+    //    nb_tot_read++;
+    //    package.size = package.buffer[0];
+    //}
+    //if (p.revents & POLLHUP) {
+    //    fprintf(stderr,  "Teensy hanged up.\n");
+    //    return -1;
+    //}
 
     while(nb_tot_read < package.size) {
-        ret = poll(&p, 1, poll_ms);
+        ret = teensy_poll(teensy, poll_ms);
         if (ret < 0)
             return ret;
+        if (ret == TEENSY_TIMEOUT)
+            continue;
 
-        nread = read(fd,
-                     package.buffer + nb_tot_read,
-                     package.size - nb_tot_read
-                );
+        nread = teensy_read(teensy,
+                            package.buffer + nb_tot_read,
+                            package.size - nb_tot_read);
 
         nb_tot_read += nread;
     }
@@ -139,25 +152,59 @@ int read_package(int fd) {
 
 int parse_cmd_options(int argc, char**argv)
 {
-    int c;
-    while ((c = getopt(argc, argv, optstr)) > 0) {
-        switch (c){
-            case 'd':
-                snprintf(device, sizeof(device), "%s", optarg);
-                break;
-            case 'o':
-                snprintf(output_fn, sizeof(output_fn), "%s", optarg);
-                break;
-            default:
-                return -1;
-        }
+    int ret;
+    option_context* options = NULL;
+
+    ret = options_parse(&options,
+                        argc,
+                        argv,
+                        arguments,
+                        sizeof(arguments)/sizeof(arguments[0]));
+    if (ret) {
+        fprintf(stderr, "Unable to parse the commandline options\n");
+        exit(EXIT_FAILURE);
     }
-    return 0;
+    
+    if (option_context_have_option(options, "help")) {
+        // TODO print usage.
+        exit(EXIT_SUCCESS);
+    }
+
+    if (option_context_have_option(options, "device")) {
+        const char* device_name = NULL;
+        ret = option_context_str_value(options, "device", &device_name);
+        if (ret) {
+            fprintf(
+                stderr,
+                "Unexpected error while parsing argument for device name\n"
+                );
+            exit(EXIT_FAILURE);
+        }
+        snprintf(device, sizeof(device), "%s", device_name);
+    }
+
+    if (option_context_have_option(options, "output-filename")) {
+        const char* output_name = NULL;
+        ret = option_context_str_value(options,
+                                       "output-filename",
+                                       &output_name);
+        if (ret) {
+            fprintf(
+                stderr,
+                "Unexpected error while parsing argument for output name\n"
+            );
+            exit(EXIT_FAILURE);
+        }
+        snprintf(output_fn, sizeof(output_fn), "%s", output_name);
+    }
+    
+    return ret;
 }
 
 int main(int argc, char** argv) {
-    int fd, ret;
-    struct termios in, out;
+    int ret;
+    //struct termios in, out;
+    TeensyDevice* teensy = NULL;
     FILE* output = NULL;
 
     if (parse_cmd_options(argc, argv)) {
@@ -174,46 +221,29 @@ int main(int argc, char** argv) {
 
     signal(SIGINT, signal_handler);
 
-    fd = open(device, O_RDWR | O_TRUNC | O_NOCTTY | O_NONBLOCK);
-    if (fd < 0) {
-        perror("Unable to open device");
-        return 1;
+    teensy = teensy_new();
+    if (!teensy) {
+        perror("Unable to create a teensy device");
+        return EXIT_FAILURE;
     }
-
-    ret = tcgetattr(fd, &in);
-    if (ret != 0) {
-        perror("Unable to get terminal settings");
-        return 1;
+    
+    ret = teensy_open(teensy, device);
+    if (ret) {
+        perror("Unable to open teensy device");
+        return EXIT_FAILURE;
     }
-
-    cfmakeraw(&out);
-    ret = tcsetattr(fd, TCSANOW, &out);
-    if (ret != 0) {
-        perror("Unable to set proper raw terminal settings");
-        return 1;
-    }
-
-    // clear the buffers
-    ret = tcflush(fd, TCIOFLUSH);
-    if (ret != 0) {
-        perror("Unable to set flush terminal before use.");
-        return 1;
-    }
-    fprintf (stderr, "Flushed buffers.\n");
 
     while(!interrupted && !stop) {
 
-        ret = read_package(fd);
+        ret = read_package(teensy);
 
         if (ret < 0) {
             perror("Unable to read package");
             break;
         }
-        if (ret == 0) {
-            if (verbose)
-                fprintf(stderr, "time out\n");
-            continue;
-        }
+
+        if (ret == 0 && verbose)
+            fprintf(stderr, "time out\n");
 
         if (parse_package() < 0) {
             fprintf(stderr, "Unable to parse package\n");
@@ -257,10 +287,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    // reset terminal settings.
-    tcsetattr(fd,TCSAFLUSH, &in);
+    teensy_close(teensy);
 
-    close(fd);
     fclose(output);
     return 0;
 }
