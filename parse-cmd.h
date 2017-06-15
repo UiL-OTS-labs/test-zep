@@ -1,27 +1,149 @@
+
 #ifndef PARSE_CMD_H
 #define PARSE_CMD_H
 
-enum OPTION_ARUGMENTS {
-    OPTIONAL_VALUE,
-    MANDATORY_VALUE,
-    NO_VALUE
+#ifdef __cplusplus
+extern "c" {
+#endif
+
+enum OPTION_VALUE_TYPES {
+    OPT_STR,    // Option value is a string (requires arugment)
+    OPT_INT,    // Option value is an int (requires arugment)
+    OPT_FLOAT,  // Option value is a floating point number (req arg)
+    OPT_FLAG    // Option is use as a flag don't specify a argument.
 };
+
+enum OPTION_RET_VAL {
+    OPTION_OK = 0,
+    OPTION_OUT_OF_MEM,
+    OPTION_WRONG_OPTION_TYPE,
+    OPTION_PARSE_ERROR,
+    OPTION_INVALID_ARGUMENT,
+    OPTION_UNKNOWN,
+    OPTION_NOT_SPECIFIED
+};
+
+typedef union option_value {
+    const char* string_value;
+    int         integer_value;
+    double      floating_value;
+}option_value;
 
 typedef struct cmd_option {
-    char*       short_opt;
-    char*       long_opt;
-    int         has_value;
-    int         value_specified;
-    char[1024]  option_argument;
-}cmd_option;
+    char            short_opt;      // The short option variant.
+    char*           long_opt;       // The long option variant.
+    int             option_type;    // Type of arguments.
+    option_value    value;
+} cmd_option;
 
-typedef struct cmd_argument {
-    char*       argument;
-    int         nposition;
-};
+typedef struct option_context option_context;
 
-int parse_options(int arc, char** argv, cmd_option*, int nargs);
+/**
+ * Parses the command line.
+ *
+ * This function parses the commandline and add found option with their
+ * values to the context. The \poptions will be initialized when
+ * this function returns OPTION_OK.
+ *
+ * \param[in,out] options The context to initialize. options can't be
+ *                        NULL and *options must be NULL.
+ * \param[in]     argc    Matches argc of main function.
+ * \param[in]     argv    Matches argv of main function.
+ * \param[in]     predef_opts This is an array to pre defined
+ *                        options that the program specifies. This
+ *                        array defines the options the program knows
+ *                        about and what type of options there are.
+ *                        It is possible to specify a default value
+ *                        for the option values here.
+ * \param [in]    nargs   The number of predefined options.
+ *
+ * \returns OPTION_OK when successfull.
+ */
+int options_parse(
+        option_context** options,
+        int arc,
+        char** argv,
+        cmd_option* predef_opts,
+        unsigned nargs
+        );
 
+/**
+ * Frees an option context and its allocated resources.
+ */
+void option_context_free(option_context* options);
+
+/**
+ * Finds and returns an options specified at the command line.
+ *
+ * \Returns A pointer to the option or NULL if it wasn't found.
+ */
+cmd_option* option_context_find_option(option_context* option,
+                                       const char* name);
+
+/**
+ * Returns whether a option was specified at the command line.
+ *
+ * \param[in] options the option context.
+ * \param[in] the name of the long option without "--" prefix.
+ * 
+ */
+int option_context_have_option(
+        option_context* options,
+        const char*     name
+        );
+
+/**
+ * Obtain a string value specified at the command line.
+ * 
+ * \param[in]   options the \poption_context.
+ * \param[in]   specify the name of the option without "-"or "--".
+ * \param[out]  The value of the string will be returned here.
+ *
+ * \returns OPTION_OK when succesfull or another \pOPTION_RET_VAL when
+ *          it is not succesfull.
+ */
+int option_context_str_value(
+        option_context* options,
+        const char*     opt_name,
+        const char**    opt_value
+        );
+
+/**
+ * Obtain an integer value specified at the command line.
+ *
+ * \param[in]   options the \poption_context.
+ * \param[in]   specify the name of the option without to retrieve "-"or "--".
+ * \param[out]  The value of the integer will be returned here.
+ *
+ * \returns OPTION_OK when succesfull or another \pOPTION_RET_VAL when
+ *          it is not succesfull.
+ */
+int option_context_int_value(
+        option_context* options,
+        const char*     opt_name,
+        int*            opt_value
+        );
+
+/**
+ * Obtain a floating point value specified at the command line.
+ *
+ * \param[in]   options the \poption_context.
+ * \param[in]   specify the name of the option without to retrieve "-"or "--".
+ * \param[out]  The value of the integer will be returned here.
+ *
+ * \returns OPTION_OK when succesfull or another \pOPTION_RET_VAL when
+ *          it is not succesfull.
+ */
+int option_context_float_value(
+        option_context* options,
+        const char*     opt_name,
+        double*         opt_value
+        );
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // !PARSE_CMD_H
 
