@@ -86,7 +86,13 @@ set_property(TARGET ${TEENSY_STATIC_LIB} PROPERTY C_STANDARD_REQUIRED ON)
 generate_export_header(${TEENSY_STATIC_LIB} BASE_NAME libteensy)
 
 set (TEENSY_SAMPLES teensy-samples)
-set (TEENSY_SAMPLES_SOURCES teensy-samples.c)
+set (TEENSY_SAMPLES_SOURCES
+        teensy-samples.c
+        parse-cmd.c
+        )
+set (TEENSY_SAMPLES_HEADERS
+        parse-cmd.h
+        )
 
 #Create our test program
 add_executable(${TEENSY_SAMPLES}
