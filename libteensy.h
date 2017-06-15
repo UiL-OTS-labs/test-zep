@@ -19,12 +19,12 @@ enum TeensyError {
 };
 
 TeensyDevice* teensy_new();
-int     teensy_poll(TeensyDevice* self);
+int     teensy_poll(TeensyDevice* self, int ms);
 int     teensy_open(TeensyDevice*self, const char* device);
 int     teensy_is_open(TeensyDevice* self);
 void    teensy_close(TeensyDevice* self);
 void    teensy_destroy(TeensyDevice* self);
-int     teensy_read(TeensyDevice* self, char** buffer);
+int     teensy_read(TeensyDevice* self, char* buffer, size_t size);
 int     teensy_write(TeensyDevice* self, const char* buffer, size_t size);
 
 const char* teensy_error();
