@@ -306,7 +306,7 @@ int options_parse(option_context**  ppoptions,
     for (i = 0; i < argc; i++) {
 
         const char *opt_value;
-        const cmd_option* option;
+        cmd_option* option;
 
         // Obtain program name
         if (i == 0) {
@@ -505,3 +505,4 @@ int option_context_have_option(option_context* context,
     assert(context && name);
     return option_context_find_option(context, name) != NULL;
 }
+
