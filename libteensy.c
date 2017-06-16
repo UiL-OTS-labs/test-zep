@@ -165,6 +165,7 @@ void tclose(TeensyDevice* self) {
     CloseHandle(self->device);
     self->device = INVALID_HANDLE_VALUE;
 #else
+    int ret;
     ret = tcsetattr(self->device, TCSAFLUSH, &self->def_settings);
     if (ret)
         fprintf(stderr, "Unable to restore default settings.\n");
