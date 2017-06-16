@@ -20,6 +20,10 @@ function run_audio_test {
 # takes program name as argument
 function print_usage() {
     printf "Usage %s: [-l hardware_latency] [-a] [-v]" $0
+    echo -e "\n"
+    echo -e "\t-l specify hardware_latency for sound test eg 3.3ms."
+    echo -e "\t-a skip sound test."
+    echo -e "\t-v skip video test."
 }
 
 TEENSY_DEVICE="/dev/ttyACM1"
