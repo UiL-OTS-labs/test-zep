@@ -1,18 +1,19 @@
 #!/bin/bash
 
-TEENSY_SAMPLES= 
+#the executable that will read from teensy.
+TEENSY_SAMPLES=
 
 # Run one test with zep in the background and Teensy monitor in the foreground
 # takes one argument, the number of frames per stimulus.
 function run_video_test {
-    ./teensy-samples -d $TEENSY_DEVICE -o "video_output$1.txt" > "video_analog_out$1.txt" &
+    $TEENSY_SAMPLES -d $TEENSY_DEVICE -o "video_output$1.txt" > "video_analog_out$1.txt" &
     zep-2.0 zep-scripts/test_monitor3 --nframes=$1
     wait $!
 }
 
 # Run one test with zep in the background and Teensy monitor in the foreground
 function run_audio_test {
-    ./teensy-samples -d $TEENSY_DEVICE -o "audio_output$1.txt" > "audio_analog_out$1.txt" &
+    $TEENSY_SAMPLES -d $TEENSY_DEVICE -o "audio_output$1.txt" > "audio_analog_out$1.txt" &
     zep-2.0 zep-scripts/test_audio0 --isi=$1 --hwlatency=${HW_LATENCY}
     wait $!
 }
