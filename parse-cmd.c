@@ -357,7 +357,7 @@ int options_parse(option_context**  ppoptions,
         } 
         else if (is_short_opt(copy[i])) {
             const char* opt_start = copy[i] + 1;
-            while (*opt_start != '0' && *opt_start != '=') {
+            while (*opt_start != '\0' && *opt_start != '=') {
                 char c = *opt_start;
                 n = find_short_option(c, predef_opts, nargs);
                 if (n < 0) {
@@ -384,6 +384,12 @@ int options_parse(option_context**  ppoptions,
                             opt_value
                             );
                     break;
+                } else {
+                    ret = options_add_parsed_option(
+                            options,
+                            option,
+                            NULL
+                            );
                 }
 
                 opt_start++;
