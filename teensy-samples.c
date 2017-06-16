@@ -22,10 +22,10 @@ char output_fn[1024]    = "./screen-output.txt";
 
 //const char* optstr = "d:o:";
 cmd_option arguments[] = {
-    {'d', "device",             OPT_STR,    0},
-    {'o', "output-filename",    OPT_STR,    0},
-    {'v', "verbose",            OPT_FLAG,   0},
-    {'h', "help",               OPT_FLAG,   0}              
+    {'d', "device",             OPT_STR,    {0}},
+    {'o', "output-filename",    OPT_STR,    {0}},
+    {'v', "verbose",            OPT_FLAG,   {0}},
+    {'h', "help",               OPT_FLAG,   {0}}              
 };
 
 volatile int interrupted = 0;
@@ -142,7 +142,7 @@ int read_package(TeensyDevice* teensy) {
             continue;
 
         nread = teensy_read(teensy,
-                            package.buffer + nb_tot_read,
+                            (char*)package.buffer + nb_tot_read,
                             package.size - nb_tot_read);
 
         nb_tot_read += nread;
