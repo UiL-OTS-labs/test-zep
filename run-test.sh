@@ -1,17 +1,19 @@
 #!/bin/bash
 
+TEENSY_SAMPLES= 
+
 # Run one test with zep in the background and Teensy monitor in the foreground
 # takes one argument, the number of frames per stimulus.
 function run_video_test {
     ./teensy-samples -d $TEENSY_DEVICE -o "video_output$1.txt" > "video_analog_out$1.txt" &
-    zep-2.0 test_monitor3 --nframes=$1
+    zep-2.0 zep-scripts/test_monitor3 --nframes=$1
     wait $!
 }
 
 # Run one test with zep in the background and Teensy monitor in the foreground
 function run_audio_test {
     ./teensy-samples -d $TEENSY_DEVICE -o "audio_output$1.txt" > "audio_analog_out$1.txt" &
-    zep-2.0 test_audio0 --isi=$1 --hwlatency=${HW_LATENCY}
+    zep-2.0 zep-scripts/test_audio0 --isi=$1 --hwlatency=${HW_LATENCY}
     wait $!
 }
 
@@ -22,6 +24,7 @@ function print_usage() {
 
 TEENSY_DEVICE="/dev/ttyACM1"
 HW_LATENCY="0.0ms"
+
 
 if [ -z $TEENSY ];
 then
@@ -64,6 +67,21 @@ while getopts "l:avht:" name ; do
       ;;
   esac
 done
+
+probe="./Release/teensy-samples"
+if [ -x $probe ]; then
+    TEENSY_SAMPLES=$probe
+fi
+
+probe="./Debug/teensy-samples"
+if [ -x $probe ]; then
+    TEENSY_SAMPLES=$probe
+fi
+
+if [ -z $TEENSY_SAMPLES ]; then
+    echo "Unable to find the teensy-samples program did you build it?" 1>&2
+    exit 1
+fi
 
 if [ ! $skip_video ]; then
     # run all video tests.
