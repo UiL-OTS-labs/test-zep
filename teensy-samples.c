@@ -109,38 +109,21 @@ int parse_package()
 int read_package(TeensyDevice* teensy) {
     int ret;
     int nread; // num bytes read from last read.
-    int poll_ms = 1000;
     int nb_tot_read = 0;
 
-    //struct pollfd p;
-    //p.fd = fd;
-    //p.events = POLLIN;
-
-    ret = teensy_poll(teensy, poll_ms);
-
-    // timeout
-    if (ret <= 0)
-        return 0;
-
-    //if (p.revents & POLLIN) {
-    //    nread = read(fd, package.buffer, 1);
-    //    if (nread < 0)
-    //        return nread;
-    //    nb_tot_read++;
-    //    package.size = package.buffer[0];
-    //}
-    //if (p.revents & POLLHUP) {
-    //    fprintf(stderr,  "Teensy hanged up.\n");
-    //    return -1;
-    //}
+    nread = teensy_read(teensy,(char*) package.buffer, 1);
+    if (nread < 0)
+        return nread;
+    nb_tot_read++;
+    package.size = package.buffer[0];
 
     while(nb_tot_read < package.size) {
-        ret = teensy_poll(teensy, poll_ms);
-        if (ret < 0)
-            return ret;
-        if (ret == TEENSY_TIMEOUT)
-            continue;
-
+//        ret = teensy_poll(teensy, poll_ms);
+//        if (ret < 0)
+//            return ret;
+//        if (ret == TEENSY_TIMEOUT)
+//            continue;
+//
         nread = teensy_read(teensy,
                             (char*)package.buffer + nb_tot_read,
                             package.size - nb_tot_read);
