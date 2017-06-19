@@ -267,6 +267,9 @@ int options_add_parsed_option(option_context* options,
     return OPTION_OK;
 }
 
+void parse_short_option(const char* option, const char** argv, int* argc)
+{
+}
 
 int options_parse(option_context**  ppoptions,
                   int               argc,
@@ -356,6 +359,7 @@ int options_parse(option_context**  ppoptions,
             }
         } 
         else if (is_short_opt(copy[i])) {
+            // skip '-'
             const char* opt_start = copy[i] + 1;
             while (*opt_start != '\0' && *opt_start != '=') {
                 char c = *opt_start;
@@ -367,14 +371,24 @@ int options_parse(option_context**  ppoptions,
                 }
                 option = &predef_opts[n];
                 if (option_takes_value(option)) {
+                    // by default the rest of the options are the argument.
                     opt_value = opt_start + 1;
+                    // If there are no more characters, the next item in argv
+                    // is the argument.
                     if (*opt_value == '\0') {
-                        if (i + 1 < argc)
-                            opt_value = copy[i + 1];
-                        else
-                            opt_value = NULL;
                         i++;
+                        if (i< argc)
+                            opt_value = copy[i];
+                        else{
+                            fprintf(stderr,
+                                    "Option -%c expected an argument\n",
+                                    c
+                                    );
+                            return OPTION_PARSE_ERROR;
+                        }
                     }
+                    // If the argument starts with '=', the next character is
+                    // the argument.
                     else if (*opt_value == '=')
                         opt_value++;
 
@@ -403,7 +417,6 @@ int options_parse(option_context**  ppoptions,
             if (ret != OPTION_OK)
                 break;
         }
-        i++;
     }
 
     // Error parsing options clean the rubish.
