@@ -25,6 +25,7 @@ function print_usage() {
     echo -e "\t-l specify hardware_latency for sound test eg 3.3ms."
     echo -e "\t-a skip sound test."
     echo -e "\t-v skip video test."
+    echo -e "\t-t Specify teensy device eeg /dev/ttyACM0 or COM3."
 }
 
 TEENSY_DEVICE="/dev/ttyACM1"
