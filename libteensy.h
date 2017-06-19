@@ -19,7 +19,7 @@ enum TeensyError {
 };
 
 TeensyDevice* teensy_new();
-int     teensy_poll(TeensyDevice* self, int ms);
+//int     teensy_poll(TeensyDevice* self, int ms);
 int     teensy_open(TeensyDevice*self, const char* device);
 int     teensy_is_open(TeensyDevice* self);
 void    teensy_close(TeensyDevice* self);

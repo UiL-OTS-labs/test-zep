@@ -8,7 +8,7 @@
 #include "libteensy.h" 
 /*Posix headers*/
 #if defined(__unix__) || defined(__APPLE__)
-#include <poll.h>
+//#include <poll.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -28,7 +28,7 @@ typedef struct termios teensy_serial_settings;
 
 typedef struct _TeensyClass {
     size_t instance_size;
-    int  (*poll)    (TeensyDevice* self, int ms);
+//    int  (*poll)    (TeensyDevice* self, int ms);
     int  (*open)    (TeensyDevice* self, const char* device);
     int  (*is_open) (TeensyDevice* self);
     void (*init)    (TeensyDevice* self);
@@ -49,37 +49,37 @@ TeensyClass teensy_class;
 
 void teensy_init(TeensyDevice* self);
 
-int tpoll(TeensyDevice* self, int ms) {
-    assert(self && self->class == &teensy_class);
-    int ret;
-    int poll_ms = ms;
-    if (!teensy_is_open(self))
-        return TEENSY_NOT_OPEN;
-
-#if defined(_WIN32)
-    int nhandles = 1;
-    ret = WaitForMultipleObjects(nhandles, &self->device, FALSE, poll_ms);
-    if (ret == WAIT_TIMEOUT)
-        return TEENSY_TIMEOUT;
-    else if (ret >= WAIT_OBJECT_0)
-        return TEENSY_OK;
-    else
-        return TEENSY_GENERAL_ERROR;
-#else
-
-    struct pollfd p;
-    p.fd = self->device;
-    p.events = POLLIN;
-    ret = poll(&p, 1, poll_ms);
-    if (ret > 0)
-        ret = TEENSY_OK;
-    else if (ret == 0)
-        ret = TEENSY_TIMEOUT;
-    else
-        ret = TEENSY_GENERAL_ERROR;
-    return ret;
-#endif
-}
+//int tpoll(TeensyDevice* self, int ms) {
+//    assert(self && self->class == &teensy_class);
+//    int ret;
+//    int poll_ms = ms;
+//    if (!teensy_is_open(self))
+//        return TEENSY_NOT_OPEN;
+//
+//#if defined(_WIN32)
+//    int nhandles = 1;
+//    ret = WaitForMultipleObjects(nhandles, &self->device, FALSE, poll_ms);
+//    if (ret == WAIT_TIMEOUT)
+//        return TEENSY_TIMEOUT;
+//    else if (ret >= WAIT_OBJECT_0)
+//        return TEENSY_OK;
+//    else
+//        return TEENSY_GENERAL_ERROR;
+//#else
+//
+//    struct pollfd p;
+//    p.fd = self->device;
+//    p.events = POLLIN;
+//    ret = poll(&p, 1, poll_ms);
+//    if (ret > 0)
+//        ret = TEENSY_OK;
+//    else if (ret == 0)
+//        ret = TEENSY_TIMEOUT;
+//    else
+//        ret = TEENSY_GENERAL_ERROR;
+//    return ret;
+//#endif
+//}
 
 void tinit(TeensyDevice* self) {
     assert(self && self->class == &teensy_class);
@@ -127,7 +127,7 @@ int topen(TeensyDevice* self, const char* dev) {
     
 #else
     assert(self);
-    self->device = open(dev, O_RDWR | O_TRUNC | O_NOCTTY | O_NONBLOCK);
+    self->device = open(dev, O_RDWR | O_TRUNC | O_NOCTTY /*| O_NONBLOCK*/);
     if (self->device < 0) {
         return TEENSY_NOT_OPEN;
     }
@@ -232,7 +232,7 @@ int twrite(TeensyDevice* self, const char* buffer, size_t size)
 
 struct _TeensyClass teensy_class = { 
     sizeof(struct _Teensy),
-    tpoll,
+    //tpoll,
     topen,
     tisopen,
     tinit,
@@ -254,13 +254,13 @@ TeensyDevice* teensy_new()
     return teensy;
 }
 
-int teensy_poll(TeensyDevice* self, int ms) {
-    struct _Teensy* device =  self;
-    assert(device->class == &teensy_class);
-    const TeensyClass* cls = device->class;
-
-    return cls->poll(self, ms);
-}
+//int teensy_poll(TeensyDevice* self, int ms) {
+//    struct _Teensy* device =  self;
+//    assert(device->class == &teensy_class);
+//    const TeensyClass* cls = device->class;
+//
+//    return cls->poll(self, ms);
+//}
 
 void teensy_init(TeensyDevice* self) {
     assert(self->class == &teensy_class);
