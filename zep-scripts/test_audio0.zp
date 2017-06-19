@@ -1,5 +1,6 @@
 #!/usr/bin/env zep-2.0
 
+plugin zep_display;
 plugin zep_sound;
 plugin zep_iobeexybox;
 
@@ -28,6 +29,42 @@ BeexyBox beexybox
     cleanup()
     {
         close();
+    }
+}
+
+NormalWindow test_window
+{
+    on_event:init()
+    {
+        position_and_size = 0,0,500,500;
+        alignment = ALIGN_CENTER, ALIGN_CENTER;
+        show();
+    }
+
+    on_event:show()
+    {
+        // Get keyboard focus when shown.
+        activate();
+    }
+}
+
+/**
+ * We only use a test page to get keyboard input.
+ */
+Page test_page
+{
+    on_event:init()
+    {
+        println("The next keys can be pressed for the following functions:\n\n");
+        println("Esc\tstop the experiment\n");
+    }
+
+    on_event:key_press()
+    {
+        if (input_key == KEY_Escape)
+        {
+            terminate;
+        }
     }
 }
 
@@ -178,6 +215,8 @@ Block trials
 
 start()
 {
+    test_window.show_page(test_page);
+
     beexybox.stop_trigger(g_measure_trig);
     beexybox.start_trigger(g_measure_trig, now(), g_test_dur + 1s);
 
