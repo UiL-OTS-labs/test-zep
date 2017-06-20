@@ -2,19 +2,21 @@
 
 #the executable that will read from teensy.
 TEENSY_SAMPLES=
+EXE=
+ZEP_EXE="zep-2.0"
 
 # Run one test with zep in the background and Teensy monitor in the foreground
 # takes one argument, the number of frames per stimulus.
 function run_video_test {
     $TEENSY_SAMPLES -d $TEENSY_DEVICE -o "video_output$1.txt" > "video_analog_out$1.txt" &
-    zep-2.0 zep-scripts/test_monitor3 --nframes=$1
+    "${ZEP_EXE}" zep-scripts/test_monitor3 --nframes=$1
     wait $!
 }
 
 # Run one test with zep in the background and Teensy monitor in the foreground
 function run_audio_test {
     $TEENSY_SAMPLES -d $TEENSY_DEVICE -o "audio_output$1.txt" > "audio_analog_out$1.txt" &
-    zep-2.0 zep-scripts/test_audio0 --isi=$1 --hwlatency=${HW_LATENCY}
+    "${ZEP_EXE}" zep-scripts/test_audio0 --isi=$1 --hwlatency=${HW_LATENCY}
     wait $!
 }
 
@@ -31,6 +33,10 @@ function print_usage() {
 TEENSY_DEVICE="/dev/ttyACM1"
 HW_LATENCY="0.0ms"
 
+if [[ "${OSTYPE}" == "msys"  ||  "${OSTYPE}" == "cygwin" ]]; then
+    EXE=".exe"
+    ZEP_EXE='/c/Program Files/zep/2.0/bin/zep.exe'
+fi
 
 if [ -z $TEENSY ];
 then
@@ -74,12 +80,22 @@ while getopts "l:avht:" name ; do
   esac
 done
 
-probe="./Release/teensy-samples"
+probe="./Release/teensy-samples${EXE}"
 if [ -x $probe ]; then
     TEENSY_SAMPLES=$probe
 fi
 
-probe="./Debug/teensy-samples"
+probe="./Debug/teensy-samples${EXE}"
+if [ -x $probe ]; then
+    TEENSY_SAMPLES=$probe
+fi
+
+probe="./build/Debug/teensy-samples${EXE}"
+if [ -x $probe ]; then
+    TEENSY_SAMPLES=$probe
+fi
+
+probe="./build/Release/teensy-samples${EXE}"
 if [ -x $probe ]; then
     TEENSY_SAMPLES=$probe
 fi
