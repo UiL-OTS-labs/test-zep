@@ -260,7 +260,7 @@ start()
     }
 
     // just in case
-    box.stop_trigger(0);
+    box.abort_trigger(0);
 
 
     if (!box.is_open)

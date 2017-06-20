@@ -140,8 +140,8 @@ Timer terminator {
     on_event:expire()
     {
         terminate;
-        beexybox.stop_trigger(g_measure_trig);
-        beexybox.stop_trigger(g_sound_trig);
+        beexybox.abort_trigger(g_measure_trig);
+        beexybox.abort_trigger(g_sound_trig);
     }
 
 }
@@ -217,7 +217,7 @@ start()
 {
     test_window.show_page(test_page);
 
-    beexybox.stop_trigger(g_measure_trig);
+    beexybox.abort_trigger(g_measure_trig);
     beexybox.start_trigger(g_measure_trig, now(), g_test_dur + 1s);
 
     if (have_option("hwlatency"))
