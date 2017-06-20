@@ -107,7 +107,6 @@ int parse_package()
 }
 
 int read_package(TeensyDevice* teensy) {
-    int ret;
     int nread; // num bytes read from last read.
     int nb_tot_read = 0;
 
@@ -118,12 +117,7 @@ int read_package(TeensyDevice* teensy) {
     package.size = package.buffer[0];
 
     while(nb_tot_read < package.size) {
-//        ret = teensy_poll(teensy, poll_ms);
-//        if (ret < 0)
-//            return ret;
-//        if (ret == TEENSY_TIMEOUT)
-//            continue;
-//
+
         nread = teensy_read(teensy,
                             (char*)package.buffer + nb_tot_read,
                             package.size - nb_tot_read);
