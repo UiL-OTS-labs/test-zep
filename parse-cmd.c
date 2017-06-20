@@ -267,10 +267,6 @@ int options_add_parsed_option(option_context* options,
     return OPTION_OK;
 }
 
-void parse_short_option(const char* option, const char** argv, int* argc)
-{
-}
-
 int options_parse(option_context**  ppoptions,
                   int               argc,
                   char**            argv,
