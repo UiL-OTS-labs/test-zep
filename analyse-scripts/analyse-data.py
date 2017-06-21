@@ -7,7 +7,7 @@ from sys import argv
 matplotlib.use('Qt4Agg')
 from matplotlib import pyplot as plt
 
-SCREEN= 6 # "type" of the screen columns in data
+SCREEN= 4 # "type" of the screen columns in data
 SOUND = 5 # "type" of the sound columns
 
 #
@@ -61,6 +61,7 @@ line_values = line_values[types ==  SCREEN]
 
 sound_axis = None
 screen_axis= None
+print ("args.plotdata\t", args.plot_data);
 
 if len(screen_times) > 0:
     # The time between on or off-set of the screen.
