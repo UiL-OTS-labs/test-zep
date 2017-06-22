@@ -7,6 +7,13 @@ def resistor_divider(v, r1, r2):
     rtot = r1 + r2
     return r2 / rtot * v
 
+def non_inverting_opamp_gain(rf, r1):
+    '''
+    @param rf Resistor between output and inverting input.
+    @param r1 Resistor between ground and inverting input.
+    '''
+    return 1.0 + rf/r1
+
 def non_inverting_opamp(Vin, Rf, Rg):
     '''
     Returns the voltage out and gain of an ideal non-inverting opamp
@@ -16,7 +23,7 @@ def non_inverting_opamp(Vin, Rf, Rg):
 
     @returns a tuple of which the first member is vout and the second is gain
     '''
-    gain = 1.0 + float(Rf)/float(Rg)
+    gain = non_inverting_opamp_gain(Rf, Rg)
     vout = gain * Vin
     return vout, gain
 
