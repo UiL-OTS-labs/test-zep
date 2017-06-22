@@ -51,7 +51,10 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+# compiled python files
+*.pyc
+
 #Build directories
 Debug/
 Release/
-Buidl/
+Build/
