@@ -63,6 +63,7 @@ Page test_page
     {
         if (input_key == KEY_Escape)
         {
+            beexybox.abort_trigger(g_measure_trig);
             terminate;
         }
     }
