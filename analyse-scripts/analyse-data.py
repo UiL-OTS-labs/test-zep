@@ -40,12 +40,13 @@ data = sp.genfromtxt(fn)
 
 types = data[:,0]           # column that defines the type of the column
 times1 = data[:,1]          # obtain times
-times2 = data[:,2]          # obtain end times
+times2 = data[:,2]          # obtain end times (audio only)
+on_off = data[:,2]          # whether the signal is high or low (video only)
 times1 = times1 / 1000.0    # convert to microseconds to milliseconds
 times2 = times2 / 1000.0    
 
 # filter out all not screen times
-screen_times = times1[types == SCREEN] 
+screen_times = times1[types == SCREEN]
 # filter sounds
 sound_starts = times1[types == SOUND]
 sound_ends   = times2[types == SOUND]
@@ -76,6 +77,18 @@ if len(screen_times) > 0:
 
     print("Missed frames = " + str(missed_frames))
     print("Short frames  = " + str(short_frames))
+    if args.plot_data:
+        nbins = 100 
+        blue = 'blue'
+        red =  'red'
+        lable_on = 'on'
+        lable_off= 'off'
+        colors=[blue, red]
+        lables = [lable_on, lable_off] 
+        off = np.array(diff_times[on_off[1:] == 1])
+        on  = np.array(diff_times[on_off[1:] == 0])
+        plt.hist([off, on], nbins, color=colors, label=lables)
+        plt.legend(prop={'size': 10})
 
 if len(sound_starts) > 0 and len(sound_ends) > 0:
 
@@ -102,5 +115,5 @@ if len(sound_starts) > 0 and len(sound_ends) > 0:
         plt.xlabel("isi (ms)")
         plt.hist(isi, 25)
 
-if(args.plot_data):
+if args.plot_data:
     plt.show();
