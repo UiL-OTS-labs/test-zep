@@ -296,7 +296,13 @@ void screen_interrupt_handler()
   unsigned t      = micros() - zero_time;
   uint8_t lineval = digitalRead(SCREEN_PIN);
 
-  package.send_screen_interrupt(t, lineval);
+  if (started) // only send info when we are started.
+    package.send_screen_interrupt(t, lineval);
+    
+  if(lineval)
+    digitalWrite(BLINK_PIN, HIGH);
+  else
+    digitalWrite(BLINK_PIN, LOW);
 }
 
 void zep_sound_interrupt_handler()
@@ -351,9 +357,8 @@ void loop()
 
   if (screen_interrupt) {
     screen_interrupt = 0;
-    if(started) {
-      screen_interrupt_handler();
-    }
+    // The screen interrupt handler handles the started boolean.
+    screen_interrupt_handler();
   }
 
   if (zep_sound_interrupt) {
