@@ -2,33 +2,60 @@
 
 plugin zep_display;
 plugin zep_sound;
-plugin zep_iobeexybox;
+plugin zep_ioteensy;
 
-//default interstimulus duration
-dur g_isi = dur(16.0 + 2.0/3.0);
-dur g_test_dur = 60s;
+dur g_isi       = dur(16.0 + 2.0/3.0);  // default (inter-) stimulus dur
+dur g_test_dur  = 60s;                  // default test dur.
+//dur g_test_dur  = 6s;                  // short dur.
+bool g_verbose  = false;                // whether verbose printing is on
+bool g_easter   = false;                // enables Easter eggs.
 
-const int CONTINUE = 0;
+const int SOUND_PIN = 9;                // Audio connection pin
+const int CONTINUE = 0;                 // normally defined by default modules.
 
-const int g_measure_trig    = 0;    // Trigger teensy to start.
-const int g_sound_trig      = 1;    // Trigger teensy to measure stimulus.
-
-BeexyBox beexybox
+// output values
+record Output
 {
-    init()
-    {
-        // Open a specific BeexyBox
-//        open("/dev/ttyACM0");
-//        open("COM4");
-        // Open the first BeexyBox
-        open();
-        if (error()) terminate;
+    int first_time;
+    int last_time;
+}
 
+Output[..] output;
+
+Teensy teensy
+{
+    int tstart;
+    int tend;
+
+    void reset()
+    {
+        tstart  = 0;
+        tend    = 0;
     }
 
-    cleanup()
+    on_event:triggered()
     {
-        close();
+        if (!tstart)
+            tstart = timestamp;
+        tend = timestamp;
+    }
+}
+
+Timer capture_timings
+{
+    on_event:expire()
+    {
+        Output out;
+        out.first_time = teensy.tstart;
+        out.last_time  = teensy.tend;
+        output_append(out);
+        teensy.reset();
+    }
+
+    void output_append(Output out)
+    {
+        output.size = output.size + 1;
+        output[output.size - 1] = out;
     }
 }
 
@@ -63,7 +90,6 @@ Page test_page
     {
         if (input_key == KEY_Escape)
         {
-            beexybox.abort_trigger(g_measure_trig);
             terminate;
         }
     }
@@ -76,19 +102,29 @@ SoundPlaybackDevice output_device
     {
         int nch = 2;
         int fs = RATE_48000;
+        int device_id = -1;
 //        int fs = RATE_192000;
         if (have_option("nch"))
         {
             nch = int(option_value("nch"));
-            if (nch < 2 || nch > 8) terminate "nch must be: 2 <= nch <=8\n";
+            if (nch < 2 || nch > 8)
+                terminate "nch must be: 2 <= nch <=8\n";
         }
         if (have_option("fs"))
         {
             fs = int(option_value("fs"));
-            if (fs < RATE_8000 || fs > RATE_192000) terminate "fs must be: 8000 <= fs <=192000\n";
+            if (fs < RATE_8000 || fs > RATE_192000)
+                terminate "fs must be: 8000 <= fs <=192000\n";
         }
+        if (have_option("sounddevice")) {
+            device_id = int(option_value("sounddevice"));
+        }
+        println("Opening sounddevice" );
+        println("\tid = \t\t" + device_id);
+        println("\tnum chan =\t" + nch);
+        println("\tsamle rate =\t" + nch);
 
-        open(nch, fs);
+        open(nch, fs, device_id);
         if (error()) terminate "Unable to open sound device.\n";
 
         //hardware_latency = 3.3ms;
@@ -110,6 +146,7 @@ SoundPlayback stimulus
     on_event:finish()
     {
         done(CONTINUE);
+        capture_timings.start(event_time + 5ms);
     }
 
     void done(int val)
@@ -130,41 +167,9 @@ SoundPlayback stimulus
             //frequency[0] = 880;
             //frequency[0] = 1000;
             //frequency[0] = 5000;
-            frequency[0] = 10000;
+            frequency[0] = 40000;
             scaling  [0] = 0.99;
         }
-    }
-}
-
-Timer terminator {
-
-    on_event:expire()
-    {
-        terminate;
-        beexybox.abort_trigger(g_measure_trig);
-        beexybox.abort_trigger(g_sound_trig);
-    }
-
-}
-
-// Starts the trigger.
-// We can't do this from the block of trials directly, since starting a
-// trigger there would overwrite the trigger of the last trigger
-Timer trigger {
-
-    time trigger_start;
-    dur  trigger_dur;
-
-    on_event:expire()
-    {
-        beexybox.start_trigger(g_sound_trig, trigger_start, trigger_dur);
-    }
-
-    void start_trigger(time start, dur trig_dur)
-    {
-        trigger_start   = start;
-        trigger_dur     = trig_dur;
-        start(trigger_start - 5ms);
     }
 }
 
@@ -183,7 +188,6 @@ Block trials
 
     on_event:exit()
     {
-        terminator.start(stimulus.finish_time + 1s);
     }
 
     /**
@@ -196,20 +200,50 @@ Block trials
         {
             stimulus.set_target(this);
             stimulus.start(reference_time + g_isi);
+        }
+    }
+}
 
-            /* Start the trigger a little bit to stimulus onset and stop
-             * the trigger a little bit after stimulus offset.
-             * Done via a timer, since BeexyBox doesn't like starting
-             * and stopping a time that is still running, or actually, the
-             * BeexyBox doesn't mind, but just doesn't exibit the desired
-             * behavior. When this trigger is started in a timer we can
-             * avoid overlapping beexybox triggers.
-             * The Teensy will record the first and last voltage flank.
-             */
-            trigger.start_trigger(
-                    stimulus.expected_start_time - 2ms,
-                    stimulus.duration + 7ms
+Timer terminator
+{
+    real [..] diff_starts;
+    real [..] diff_ends;
+    real [..] diff_durs;
+
+    on_event:expire()
+    {
+        print_ouput();
+        if (g_easter)
+            println("Hasta la vista, baby.");
+        terminate;
+    }
+
+    void append(real[] array, real value)
+    {
+        array.size = array.size + 1;
+        array[array.size-1] = value;
+    }
+
+    void print_ouput()
+    {
+        int i = 1;
+        while (i < output.size)
+        {
+            append(diff_starts, output[i].first_time - output[i-1].first_time);
+            append(diff_ends  , output[i].last_time  - output[i-1].last_time);
+            append(diff_durs  , output[i].last_time  - output[i].first_time);
+            i++;
+        }
+
+        println("start\tend\tdur");
+
+        i = 0;
+        while (i < diff_starts.size) {
+            println("" + diff_starts[i] + "\t" +
+                         diff_ends[i]   + "\t" +
+                         diff_durs[i]
                     );
+            i++;
         }
     }
 }
@@ -217,9 +251,7 @@ Block trials
 start()
 {
     test_window.show_page(test_page);
-
-    beexybox.abort_trigger(g_measure_trig);
-    beexybox.start_trigger(g_measure_trig, now(), g_test_dur + 1s);
+    string teensy_dev = "/dev/ttyACM0";
 
     if (have_option("hwlatency"))
         output_device.hardware_latency = dur(option_value("hwlatency"));
@@ -229,6 +261,24 @@ start()
 
     if (have_option("freq"))
         stimulus.clip.frequency[0] = int(option_value("freq"));
+
+    if (have_option("dev"))
+        teensy_dev = option_value("dev");
+
+    if (have_flag("egg")) {
+        g_easter = true;
+    }
+
+    // Set up teensy and abort on error.
+    teensy.connect(teensy_dev);
+    if (error())
+        terminate;
+
+    teensy.register_input_trigger(SOUND_PIN);
+    if (error())
+        terminate;
+
+    terminator.start(event_time + g_test_dur + 2500ms);
 
     trials.enter();
 }

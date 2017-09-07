@@ -1,388 +1,245 @@
 
-/**
- * Write one packet to the usb connection.
- * 
- * A packet has a header + a payload.
- * The header starts with its size max 255 and its type also an
- * eight bit entity. The size is the size of the total packet.
- * So the payload is the size of the packet - the size of the header.
- */
-class SerialPackage {
-  
-  public:
-    
-    enum package_type {
-      START,
-      STOP,
-      HEADER,
-      SAMPLE,
-      SCREEN_INTERRUPT,
-      SOUND_SAMPLE
-    };
-    
-    void send_start()
-    {
-      const int size = sizeof(uint8_t) + sizeof(uint8_t); 
-      set_size(HDR_SZ);
-      set_type(START);
-      Serial.write(m_buffer, size);
-    }
-    
-    void send_stop()
-    {
-      const int size = sizeof(uint8_t) + sizeof(uint8_t);
-      set_type(STOP);
-      set_size(size);
-      Serial.write(m_buffer, size);      
-    }
+#include "TeensyPackage.h"
+#include "constants.h"
+#include "register_inputs.h"
+#include "Events.h"
+#include "CyclicQueue.h"
+#include "Clock.h"
+#include "EventQueue-impl.cpp"
 
-    void send_header(const char* header, size_t hdr_sz)
-    {
-      // limit size of header to 256 bytes hdr_sz is the length
-      // the content, not the package header. HDR_SZ is the size
-      // of the SerialPackage header.
-      int size = HDR_SZ + hdr_sz < 256 ? HDR_SZ + hdr_sz : 256;
-      
-      set_type(HEADER);
-      set_size(size);
-      set_string(header, hdr_sz < 254 ? hdr_sz: 254 );
-      
-      Serial.write(m_buffer, size);
-    }
+using namespace ZEPIOTEENSY;
 
-    void send_sample(unsigned long t,
-                     uint8_t w,
-                     uint8_t b,
-                     uint16_t photo,
-                     uint16_t sound
-                     )
-    {
-      const int size = HDR_SZ + sizeof(t) + sizeof(w) + sizeof(b) + 
-                                sizeof(photo) + sizeof(sound);
-      uint8_t* wrptr = m_buffer + HDR_SZ; // point right after the packet header.
-      
-      set_type(SAMPLE);
-      set_size(size);
-
-      // Copy all arguments to buffer.
-      memcpy(wrptr, &t    , sizeof(t));     wrptr += sizeof(t);
-      memcpy(wrptr, &w    , sizeof(w));     wrptr += sizeof(w);
-      memcpy(wrptr, &b    , sizeof(b));     wrptr += sizeof(b);
-      memcpy(wrptr, &photo, sizeof(photo)); wrptr += sizeof(photo);
-      memcpy(wrptr, &sound, sizeof(sound)); wrptr += sizeof(sound);
-    
-      Serial.write(m_buffer, size);
-    }
-
-    void send_screen_interrupt(unsigned long t, uint8_t line_val)
-    {
-      const int size = HDR_SZ + sizeof(t) + sizeof(line_val);
-      uint8_t* wrptr =  m_buffer + HDR_SZ;
-
-      set_type(SCREEN_INTERRUPT);
-      set_size(size);
-      memcpy(wrptr, &t, sizeof(t));             wrptr += sizeof(t);
-      memcpy(wrptr, &line_val, sizeof(uint8_t));wrptr += sizeof(uint8_t);
-
-      Serial.write(m_buffer, size);
-    }
-
-    void send_sound_sample(uint32_t tbeg, uint32_t tend)
-    {
-      const int size = HDR_SZ + sizeof(tbeg) + sizeof(tend);
-      uint8_t* wrptr = m_buffer + HDR_SZ; // Point right after the packet header.
-
-      set_type(SOUND_SAMPLE);
-      set_size(size);
-
-      memcpy(wrptr, &tbeg, sizeof(tbeg)); wrptr += sizeof(tbeg);
-      memcpy(wrptr, &tend, sizeof(tend)); wrptr += sizeof(tend);
-      
-      Serial.write(m_buffer, size);
-    }
-    
-  private:
-
-    const size_t HDR_SZ = 2;
-  
-    void set_string(const char* s, size_t hdr)
-    {
-      memcpy(m_buffer + 2, s, hdr < 254 ? hdr : 254);
-    }
-    
-    void set_type(uint8_t pkg_type)
-    {
-      m_buffer[1] = pkg_type;
-    }
-
-    void set_size(uint8_t size)
-    {
-      m_buffer[0] = size;
-    }
-
-    uint8_t m_buffer[256];
-};
-
-class SoundTiming {
-
-  public:
-    SoundTiming() {
-      reset();
-    }
-    
-    void reset() {
-      m_start = 0;
-      m_end = 0;
-    }
-
-    /**
-     * Register the time.
-     * Each first time sample will set m_start and m_end.
-     * Each subsequent sample will only set m_end, untill
-     * reset is called.
-     */
-    void register_time(uint32_t t)
-    {
-      if (!m_start)
-        m_start = t;
-      m_end = t;
-    }
-
-    void get_times(uint32_t* pstart, uint32_t* pend) {
-      *pstart = m_start;
-      *pend = m_end;
-    }
-
-  private:
-    
-    uint32_t m_start; // First registered time.
-    uint32_t m_end;   // Last registered time.
-};
-
+#define MAX_PINS 24
 
 /**
  * Global variables
  */
+TeensyPackage   gpackage;
+CyclicQueue<std::shared_ptr<Event>> gqueue(64);
 
-const int LED_PIN           = 13; // led on teensy device
-const int BLINK_PIN         = 12; // the led to blink
+// True once the client has successfully performed a handshake.
+bool            gidentified = false;
 
-// Interrupt pins active low
-const int ZEP_START_PIN     = 23; // Zep (BeexyBox X) will pull this pin low when experiment starts.
-const int ZEP_SOUND_PIN     = 22; // Is set high when a sound sampling interval starts 
-                                  // Is put high by BeexyBox or parallel port
 
-// Input pins (Analog)
-const int SENSOR_PHOTO_PIN  = 14; // Reads photo diode current converted to voltage.
-const int SENSOR_SOUND_PIN  = 15; // Reads sound level.
-
-// Input pins (Digital)
-const int SCREEN_PIN        = 10; // Goes high or low in according to the screen.
-const int SOUND_LEVEL_PIN   = 9;  // Is driven by the sound output of the audio lineout. 
-
-//Sample every 100 micro seconds/10th of a millisecond.
-#define SAMPLE_PERIOD 100
-
-// set when a interrupt occures from ISR functions.
-volatile int start_interrupt      = 0; // whether the program is taking samples.
-volatile int sample_interrupt     = 0; // Is set when we should take a sample.
-volatile int screen_interrupt     = 0; // occurs on a flank of the output of the photo
-                                       // transistor circuit.
-volatile int zep_sound_interrupt  = 0; // Is set on a flank before(rising) or after (falling) the 
-                                       // sound has been presented.
-volatile int sound_level_interrupt= 0; // is set on a flank of the teensy.
-
-int led_val   = LOW;  // digital level of the led on teensy.
-
-int8_t experiment_line  = HIGH;   // When pulled low the experiment is started.
-
-bool started = false;             // Is set when the Zep tells it is ready to start.
-
-IntervalTimer timer;
-unsigned long zero_time;
-
-SerialPackage package;
-SoundTiming   sound_timer;
-
-/***
- * Interrupt routines 
+/**
+ * utility function to check whether the line is describes a pin/line
+ * that can be used as GPIO with a line CHANGE interrupt capability .
  */
-void start_line_isr(void) {
-  start_interrupt = 1;
-}
-
-void sample_interrupt_isr(void) {
-  sample_interrupt = 1;
-}
-
-void screen_interrupt_isr() {
-  screen_interrupt = 1;
-}
-
-void sound_level_isr() {
-  // is set on flanks of the sound stimulus.
-  sound_level_interrupt = 1;
-}
-
-void zep_sound_interrupt_isr() {
-  // is set high just before zep starts an auditory stimulus.
-  zep_sound_interrupt = 1;
+bool isAcceptableInput(uint8_t line) {
+    // Modify for Arduinos
+    // Uno types for example only support pin 2 & 3 as valid input trigger.
+    return line < MAX_PINS;
 }
 
 /**
- * General functions
+ * Handles and identify message, both teensy and zep exchange their uuid's
  */
-
- /**
-  * Prepares the Teensy for a session. And send a start
-  * message to the teensy-sample program.
-  */
-void start_measure_handler() // Starts the experiment
+int handleIndentify()
 {
-  // write the teensy led pin down in case it was on.
-  zero_time = micros();
-  const char* header = "time\twhite\tblack\tphoto\tsound";
+    const String expected(ZEP_ZEP_TO_TEENSY_UUID);
+    const String reply(ZEP_TEENSY_TO_ZEP_UUID);
+    const size_t bufsz = expected.length();
+    char buf[bufsz] = {0};
+    const uint8_t* payload = gpackage.payload();
 
-  Serial.begin(9600); // Teensy always uses fullspeed usb speed.
-  Serial.flush();     // Remove as much junk as possible.
+    if (gpackage.payloadSize() != expected.length()) {
+        gpackage.prepareAcknowledgeFailure();
+        gpackage.write();
+        return -1;
+    }
 
-  // Send start
-  package.send_start();
-  
-  // We send the header without terminating 0 byte.
-  package.send_header(header, strlen(header));
+    memcpy(buf, payload, gpackage.payloadSize());
+    buf[gpackage.payloadSize()] = '\0';
 
-  timer.begin(sample_interrupt_isr, SAMPLE_PERIOD);
+    if (expected != buf) {
+        gpackage.prepareAcknowledgeFailure();
+        gpackage.write();
+        return -1;
+    }
 
-  digitalWrite(LED_PIN, LOW);
-  started = true;
+    gpackage.prepareIdentify(reply.c_str(), reply.length());
+    if (gpackage.write() != 0) {
+        return -1;
+    }
+
+    return 0;
 }
 
 /**
- * Stops the session and send a stop signal to 
+ * Handles the registration of an input trigger.
+ *
+ * Specifying and invalid line is an error.
  */
-void stop_measure_handler() //  And stop it
+int handleRegisterInput()
 {
-  started = false;
-  timer.end();
-  package.send_stop();
-  Serial.flush();
-  Serial.end();
-  digitalWrite(BLINK_PIN, LOW);
+    uint8_t line;
+    memcpy(&line, gpackage.payload(), sizeof(line));
+    if (isAcceptableInput(line)) {
+        pinMode(line, INPUT_PULLUP);
+        registerInputTrigger(line);
+        gpackage.prepareAcknowledgeSuccess();
+        gpackage.write();
+    }
+    else {
+        gpackage.prepareInvalidLine();
+        gpackage.write();
+        return -1;
+    }
+
+    return 0;
 }
 
-void start_handler()
+/**
+ * Handles the deregistration of an input trigger.
+ *
+ * Specifying and invalid line is an error, but deregistering
+ * a line that wasn't specified doesn't hurt, thus does not result in an
+ * error.
+ */
+int handleDeregisterInput()
 {
-  int val = digitalRead(ZEP_START_PIN);
-  if (val == HIGH)
-    start_measure_handler();
-  else
-    stop_measure_handler();
+    uint8_t line;
+    memcpy(&line, gpackage.payload(), sizeof(line));
+    if (isAcceptableInput(line)) {
+        pinMode(line, INPUT_PULLUP);
+        deregisterInputTrigger(line);
+        gpackage.prepareAcknowledgeSuccess();
+        gpackage.write();
+    }
+    else {
+        gpackage.prepareInvalidLine();
+        gpackage.write();
+        return -1;
+    }
+
+    return 0;
 }
 
-void take_sample()
+/**
+ * Reads precisely one packet from the serial device (if the packet is valid).
+ * It handles the packet and sends a reply whether the packet was successfully
+ * handled or an error when
+ */
+int readPackage()
 {
-  unsigned t        = micros() - zero_time;
-  int white         = 0;//digitalRead(ZEP_WHITE_PIN);
-  int black         = 0;//digitalRead(ZEP_BLACK_PIN);
-  int photo_value   = analogRead(SENSOR_PHOTO_PIN);
-  int sound_value   = analogRead(SENSOR_SOUND_PIN);
+    int result = gpackage.read();
 
-  package.send_sample(t, white, black, photo_value, sound_value);
+    if (result)
+        return result;
+
+    switch (gpackage.type()) {
+        case TeensyPackage::IDENTIFY:
+            result = handleIndentify();
+            if (!result)
+                gidentified = true;
+            break;
+        case TeensyPackage::REGISTER_INPUT:
+            if (gidentified) {
+                result = handleRegisterInput();
+                break;
+            }
+        case TeensyPackage::DEREGISTER_INPUT:
+            if (gidentified) {
+                result = handleDeregisterInput();
+                break;
+            }
+        default:
+            gpackage.prepareAcknowledgeFailure();
+            gpackage.write();
+            result = 1;
+    }
+    return result;
 }
 
-void screen_interrupt_handler()
+/*
+ * Sends one event back to the client.
+ */
+int sendEvent(const EventPtr e)
 {
-  unsigned t      = micros() - zero_time;
-  uint8_t lineval = digitalRead(SCREEN_PIN);
+    using std::static_pointer_cast;
 
-  if (started) // only send info when we are started.
-    package.send_screen_interrupt(t, lineval);
-    
-  if(lineval)
-    digitalWrite(BLINK_PIN, HIGH);
-  else
-    digitalWrite(BLINK_PIN, LOW);
+    int err = 0;
+
+    switch (e->mtype) {
+    case Event::TRIGGERED:
+        {
+            const TriggeredEventPtr t =
+                    static_pointer_cast<TriggeredEvent>(e);
+            gpackage.prepareEventTrigger(t->mpin,
+                                         t->mtime,
+                                         t->mlogic_level
+                                         );
+            break;
+        }
+    default:
+        return 1;
+    };
+
+    err = gpackage.write();
+    Serial.flush();
+
+    return err;
 }
 
-void zep_sound_interrupt_handler()
+/*
+ * This function handles the connection with the client. So it should have
+ * and active connection before it enters and will keep running until
+ * the serial connection with the client is terminated.
+ */
+void handleClient()
 {
-  // We start a new sound timing measurement, thus reset the sound timings.
-  int value = digitalRead(ZEP_SOUND_PIN);
-  if (value == HIGH) {
-    sound_timer.reset();
-  }
-  else {
-    uint32_t soundstart, soundend;
-    sound_timer.get_times(&soundstart, &soundend);
-    package.send_sound_sample(soundstart, soundend);
-  }
+    while (Serial) {
+        if(Serial.available()) {
+            readPackage();
+        }
+        while (!gqueue.empty()) {
+            EventPtr e;
+            int err = gqueue.dequeue(e);
+            if (err)
+                continue;
+            err = sendEvent(e);
+        }
+    }
 }
 
-void sound_level_interrupt_handler()
-{
-  uint32_t t = micros() - zero_time;
-  sound_timer.register_time(t);
-}
-
+// The setup function is run before the program starts and after each 
+// connection to the device is terminated in order to reset the status
+// for a new device.
 void setup()
 {
-  pinMode(LED_PIN,    OUTPUT);
-  pinMode(BLINK_PIN,  OUTPUT);
-  
-  pinMode(ZEP_START_PIN,    INPUT);
-  pinMode(SCREEN_PIN,       INPUT_PULLUP);
-  pinMode(ZEP_SOUND_PIN,    INPUT);
-  pinMode(SOUND_LEVEL_PIN,  INPUT_PULLUP);
-  
-  attachInterrupt(ZEP_START_PIN,    start_line_isr,           CHANGE);
-  attachInterrupt(SCREEN_PIN,       screen_interrupt_isr,     CHANGE);
-  attachInterrupt(ZEP_SOUND_PIN,    zep_sound_interrupt_isr,  CHANGE);
-  attachInterrupt(SOUND_LEVEL_PIN,  sound_level_isr,          CHANGE);
+    Serial.begin(115200);// for a Teensy it is always 12Mbit.
+
+    // Make sure no events are still in the queue, once something connects
+    gqueue.clear();
+    
+    for(int i = 0; i < MAX_PINS; i++) {
+        pinMode(i, INPUT);
+        deregisterInputTrigger(i);
+    }
+
+    pinMode(13, OUTPUT);
+
+    // Cancel all running timers.
+    gclock.stop();
+
+    // require a new handshake.
+    gidentified = false;
 }
+
 
 void loop()
 {
-  if (start_interrupt) {
-    start_interrupt = 0;
-    start_handler();
-  }
+    if (Serial) {
+        gclock.reset();
+        gclock.start();
+        digitalWrite(13, HIGH);
 
-  if (sample_interrupt) {
-    sample_interrupt = 0;
-    if(started) {
-      take_sample();
+        handleClient();
     }
-  }
-
-  if (screen_interrupt) {
-    screen_interrupt = 0;
-    // The screen interrupt handler handles the started boolean.
-    screen_interrupt_handler();
-  }
-
-  if (zep_sound_interrupt) {
-    zep_sound_interrupt = 0;
-    if(started) {
-      zep_sound_interrupt_handler(); 
-    }
-  }
-
-  if (sound_level_interrupt) {
-    sound_level_interrupt = 0;
-    if (started)
-      sound_level_interrupt_handler();
-  }
     
-  if(!started) { // only blink in standby.
-    // blink status led
-    long t = millis();
-    if ((t/250) % 2)
-      digitalWrite(LED_PIN, HIGH);
-    else
-      digitalWrite(LED_PIN, LOW);
-  }
-  
+    // Connection lost reinitialize default state.
+    digitalWrite(13, LOW);
+    setup();
 }
 
 

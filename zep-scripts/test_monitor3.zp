@@ -4,7 +4,7 @@
 plugin zep_display;
 plugin zep_string;
 plugin zep_struct;
-plugin zep_iobeexybox;
+plugin zep_ioteensy;
 
 /*************** Zep specific **************/
 // Continue is normally defined in defs.zm or since Zep-2.0 in std_control.zm
@@ -17,40 +17,98 @@ int g_fps                   = 60;
 int g_nframes               = 1;        // Number of frames between stimulus
                                         // color.
 int g_tot_frames            = 60 * 60;  // One minute.
+//int g_tot_frames            = 6 * 60;  // One tenth of a minute.
 
 bool g_terminate_on_finish  = true;
 
-// the pins to communicate with teensy device.
-const int START_EXPERIMENT_PIN  = 0;
-const int STOP_EXPERIMENT_PIN   = 1;
-const int START_BLACK_PIN       = 2;
-const int START_WHITE_PIN       = 3;
+const int PHOTO_DIODE_PIN   = 10;
 
 /*************** utilities ********/
 
-// Returns duration since start of the experiment
-dur rel_time (time event_time)
+record Output
 {
-    return int (event_time - zero_time());
-}
-
-int rel_time_int (time event_time)
-{
-    return int (rel_time(event_time));
-}
-
-real rel_time_real (time event_time)
-{
-    return real(rel_time(event_time));
+    int timestamp;
+    int logic_level;
 }
 
 /*************** objects *********/
+Teensy teensy {
 
-BeexyBox box
-{
+    Output[..]  output;
+    real[..]    diffs; // differential vector (shows interval between two 
+                       // successive frames).
+    real        edur;  // expected stimulus duration.
+    real        fdur;  // theoretical frame duration.
+
+    on_event:init()
+    {
+        // reallocating memory might prove expensive.
+        output.capacity = 60 * 60 + 10;
+        diffs.capacity = output.capacity;
+    }
+
+    on_event:triggered()
+    {
+        Output out;
+        out.timestamp   = timestamp;
+        out.logic_level = line_value;
+        append(out);
+    }
+
+    void append(Output out)
+    {
+        output.size = output.size + 1;
+        output[output.size - 1] = out;
+    }
+
+    void set_expected_durations(real fdur_us, real sdur_us)
+    {
+        fdur = fdur_us;
+        edur = sdur_us;
+        println();
+        println( "frame dur             = " + fdur + " µs");
+        println( "expected stimulus dur = " + edur + " µs");
+        println( "valid stim interval   = " + (edur - .75 * fdur) +
+                                          " µs < dur < "
+                                            + (edur + .25 * fdur) + " µs"
+                                            );
+    }
+
     on_event:cleanup()
     {
-        close();
+        int i;
+        int mframe;
+        int sframe;
+        while (i < output.size)
+        {
+            if (i == 0)
+                println("" + output[i].logic_level + "\t" + output[i].timestamp);
+            else
+            {
+                println("" + output[i].logic_level + "\t"
+                           + output[i].timestamp   + "\t" 
+                           + (output[i].timestamp - output[i-1].timestamp)
+                        );
+                diffs.size = diffs.size + 1;
+                diffs[diffs.size-1] =
+                        output[i].timestamp - output[i-1].timestamp;
+            }
+            i++;
+        }
+
+        i = 0;
+        while(i < diffs.size)
+        { 
+            if (diffs[i] > edur + .25 * fdur)
+                mframe++;
+            else if (diffs[i] < edur - .75 * fdur)
+                sframe++;
+            i++;
+        }
+        println();
+        println("missed frames  = " + mframe);
+        println("to short stims = " + sframe);
+        println("total frames   = " + output.size);
     }
 }
 
@@ -210,22 +268,18 @@ Page test_page
 
     void start_experiment ()
     {
+        real expected_framedur = 
+                real(display_device.refresh_interval[test_window.target_head]);
+        expected_framedur = expected_framedur * 1000; // convert ms to µs
+        real expected_stimdur  = g_nframes * expected_framedur;
+
+        teensy.set_expected_durations(expected_framedur, expected_stimdur);
         int start_frame = display_device.current_frame_counter[
                 test_window.target_head
                 ];
 
         canvas.rect.start_fr(start_frame + g_fps/2 , g_tot_frames);
-
-        // Prepare the Teensy for measurement. Start +/- one frame before
-        // measurement.
-        println("Expected start time = " + rel_time(canvas.rect.expected_start_time));
-        box.start_trigger(
-            0,
-            canvas.rect.expected_start_time - 
-                display_device.refresh_interval[test_window.target_head],
-            canvas.rect.expected_finish_time - canvas.rect.expected_start_time +
-                100ms // allow 100ms drift.
-            );
+        teensy.register_input_trigger(PHOTO_DIODE_PIN);
     }
 }
 
@@ -233,20 +287,15 @@ start()
 {
     test_window.show_page(test_page);
     test_page.hide_cursor();
+    string device = "/dev/ttyACM0";
 
     display_device.open();
     if (error())
         terminate "Unable to open display device\n";
     
-    if (have_option("device")) {
-        string device; 
-        device = option_value("device");
-        box.open(device);
-    }
-    else {
-        box.open();
-    }
-
+    if (have_option("dev"))
+        device = option_value("dev");
+    
     if (have_option("nframes")) {
         g_nframes = int(option_value("nframes"));
         if (g_nframes <= 0)
@@ -259,11 +308,9 @@ start()
            terminate "option fps has invalid value, fps must be > 0\n";
     }
 
-    // just in case
-    box.abort_trigger(0);
-
-
-    if (!box.is_open)
-        terminate "Unable to open BeexyBox.\n";
+    teensy.connect(device);
+    if(error()) {
+        terminate "Unable to open teensy.";
+    }
 }
 

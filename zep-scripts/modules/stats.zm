@@ -1,0 +1,170 @@
+
+enum StatsError {
+    STATS_OK,               // All operation were successful.
+    STATS_DIVIDE_BY_ZERO,   // oops can't divide by zero.
+    STATS_EMPTY_SET,        // Some operation like min or max are not
+                            // defined for empty sets.
+    STATS_DOMAIN_ERROR,     // e.g. sqrt(negative number);
+};
+
+// Global value that indicates whether an stats error has occurred.
+StatsError g_stats_error = STATS_OK;
+
+// returns whether or not an error has occurred.
+StatsError stats_error()
+{
+    return g_stats_error;
+}
+
+// Clear the error status.
+void stats_error_clear()
+{
+    g_stats_error = STATS_OK;
+}
+
+// Compute the sum over a set of values.
+real sum(real[] values)
+{
+    real sum = 0.0;
+    int i;
+
+    while(i < values.size) {
+        sum += values[i];
+        i++;
+    }
+
+    return sum;
+}
+
+// Computes the mean
+real mean(real[] values)
+{
+    real sum = sum(values);
+    return sum / values.size;
+}
+
+// Determines the maximum value in the array, it will crash with an index
+// error if the values array is empty.
+real max(real[] values)
+{
+    real mval;
+    if (values.size == 0) 
+        print_error("Oops taking the value max value of an empty set.\n");
+
+    mval = values[0];
+    int i = 1;
+    while(i < values.size) {
+        if (values[i] > mval)
+            mval = values[i];
+        i++;
+    }
+
+    return mval;
+}
+
+// Determines the minimum value in the array, it will crash with an index
+// error if the values array is empty.
+real min(real[] values)
+{
+    real mval;
+    if (values.size == 0) 
+        print_error("Oops taking the value max value of an empty set.\n");
+
+    mval = values[0];
+    int i = 1;
+    while(i < values.size) {
+        if (values[i] < mval)
+            mval = values[i];
+        i++;
+    }
+
+    return mval;
+}
+
+real sum_of_squares_around_mean(real[] values)
+{
+    real sum = sum(values);
+    real mean = sum/values.size;
+    real ss = 0.0;
+    int i;
+    while (i < values.size)
+    {
+        ss += exp(values[i] - mean, 2);
+        i++;
+    }
+    return ss;
+}
+
+// Computes the variance of a set of values
+real variance(real[] values, bool population=false)
+{
+    real n = values.size;
+    real ss_mean = sum_of_squares_around_mean(values);
+
+    if (!population)
+        n = values.size - 1;
+
+    if (n <= 0)
+        print_error("Set to small to compute variance.\n");
+
+    return ss_mean / n;
+}
+
+// Returns the standard deviation of sample or population.
+real std(real[] values, bool population=false)
+{
+    real variance = variance(values, population);
+    return sqrt(variance);
+}
+
+// compute Standard Error of the mean
+real sem(real[] values, bool population=false)
+{
+    real stddev = std(values);
+    return stddev/sqrt(values.size);
+}
+
+// sorts an real[] in place.
+void qsort(real[] array, int m, int n)
+{
+   if (m < n) 
+   {
+       int k = (m + n) / 2;
+ 
+       array.swap(m, k);
+ 
+       real key = array[m];
+       int i = m + 1;
+       int j = n;
+       while (i <= j)
+       {
+           while ((i <= n) && (array[i] <= key)) i++;
+           while ((j >= m) && (array[j] >  key)) j--;
+           if (i < j) array.swap(i, j);
+       }
+       array.swap(m, j);
+ 
+       qsort(array, m, j - 1);
+       qsort(array, j + 1, n);
+   }
+}
+
+real median(real[] values)
+{
+    real[..] copy;
+    copy.size = values.size;
+    int i;
+    if (values.size < 1)
+        print_error("Taking median of empty set.\n");
+    while(i < values.size)
+    {
+        copy[i] = values[i];
+        i++;
+    }
+
+    // This is pretty slow when using more then 1e5 elements
+    qsort(copy, 0, copy.size-1);
+
+    return copy[copy.size/2];
+}
+
