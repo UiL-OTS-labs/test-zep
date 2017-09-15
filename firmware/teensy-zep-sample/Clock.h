@@ -2,7 +2,8 @@
 #ifndef CLOCK_H
 #define CLOCK_H 
 
-#include "stdint.h"
+#include "Arduino.h"
+#include <stdint.h>
 
 /**
  * Clocks every 10 us.

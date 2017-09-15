@@ -291,6 +291,6 @@ int deregisterInputTrigger(uint8_t line)
     else {
         err = 1;
     }
-    return 0;
+    return err;
 }
 
