@@ -6,6 +6,8 @@ plugin zep_string;
 plugin zep_struct;
 plugin zep_ioteensy;
 
+import stats;
+
 /*************** Zep specific **************/
 // Continue is normally defined in defs.zm or since Zep-2.0 in std_control.zm
 const int CONTINUE          = 0;
@@ -14,10 +16,11 @@ const int CONTINUE          = 0;
 int g_width                 = 500;
 int g_height                = 500;
 int g_fps                   = 60;
-int g_nframes               = 1;        // Number of frames between stimulus
-                                        // color.
-int g_tot_frames            = 60 * 60;  // One minute.
-//int g_tot_frames            = 6 * 60;  // One tenth of a minute.
+int g_nframes               = 1;        // Length of stimulus in frames.
+//int g_tot_frames            = 60 * 60;  // One minute.
+int g_tot_frames            = 6 * 60;   // One tenth of a minute.
+//int g_tot_frames            = 6;        //one hundred of a minute;
+bool g_verbose              = false;
 
 bool g_terminate_on_finish  = true;
 
@@ -31,20 +34,30 @@ record Output
     int logic_level;
 }
 
+
+void array_append(real[] ar, real value)
+{
+    ar.size         = ar.size + 1;
+    ar[ar.size - 1] = value;
+}
+
 /*************** objects *********/
+
 Teensy teensy {
 
     Output[..]  output;
-    real[..]    diffs; // differential vector (shows interval between two 
-                       // successive frames).
-    real        edur;  // expected stimulus duration.
-    real        fdur;  // theoretical frame duration.
+    real[..]    diffs;          // differential vector (shows interval between
+                                // two successive frames).
+    real[..]    diff_on_off;    // diffs of frames that went on or off.
+    real        edur;           // expected stimulus duration.
+    real        fdur;           // theoretical frame duration.
 
     on_event:init()
     {
         // reallocating memory might prove expensive.
         output.capacity = 60 * 60 + 10;
         diffs.capacity = output.capacity;
+        diff_on_off.capacity = diffs.capacity;
     }
 
     on_event:triggered()
@@ -65,13 +78,15 @@ Teensy teensy {
     {
         fdur = fdur_us;
         edur = sdur_us;
-        println();
-        println( "frame dur             = " + fdur + " µs");
-        println( "expected stimulus dur = " + edur + " µs");
-        println( "valid stim interval   = " + (edur - .75 * fdur) +
-                                          " µs < dur < "
-                                            + (edur + .25 * fdur) + " µs"
-                                            );
+        if (g_verbose) {
+            println();
+            println( "frame dur             = " + fdur + " µs");
+            println( "expected stimulus dur = " + edur + " µs");
+            println( "valid stim interval   = " + (edur - .75 * fdur) +
+                                              " µs < dur < "
+                                                + (edur + .25 * fdur) + " µs"
+                                                );
+        }
     }
 
     on_event:cleanup()
@@ -79,19 +94,31 @@ Teensy teensy {
         int i;
         int mframe;
         int sframe;
+
         while (i < output.size)
         {
-            if (i == 0)
-                println("" + output[i].logic_level + "\t" + output[i].timestamp);
+            if (i == 0) {
+                if (g_verbose)
+                    println(""   + output[i].logic_level +
+                            "\t" + output[i].timestamp
+                            );
+            }
             else
             {
-                println("" + output[i].logic_level + "\t"
-                           + output[i].timestamp   + "\t" 
-                           + (output[i].timestamp - output[i-1].timestamp)
+                if (g_verbose)
+                    println("" + output[i].logic_level + "\t"
+                               + output[i].timestamp   + "\t" 
+                               + (output[i].timestamp - output[i-1].timestamp)
+                            );
+                array_append(
+                        diffs,
+                        output[i].timestamp - output[i-1].timestamp
                         );
-                diffs.size = diffs.size + 1;
-                diffs[diffs.size-1] =
-                        output[i].timestamp - output[i-1].timestamp;
+                if (i >= 2)
+                    array_append(
+                            diff_on_off,
+                            output[i].timestamp - output[i-2].timestamp
+                            );
             }
             i++;
         }
@@ -105,10 +132,21 @@ Teensy teensy {
                 sframe++;
             i++;
         }
+
         println();
         println("missed frames  = " + mframe);
         println("to short stims = " + sframe);
         println("total frames   = " + output.size);
+
+        if (diffs.size != 0) {
+            println();
+            println("\tmean\tsd");
+            // This compares an on- and an offset of a stimulus
+            println("Single stim\t" + mean(diffs)/1000 + "\t" + std(diffs)/1000);
+            // This compares the stimuli betwee two onsets or two offsets
+            println("Double stim\t" +
+                    mean(diff_on_off)/1000 + "\t" + std(diff_on_off)/1000);
+        }
     }
 }
 
@@ -302,13 +340,16 @@ start()
             terminate "option nframes has invalid value, nframes must be > 0\n";
     }
 
+    if (have_flag("v") || have_flag("verbose"))
+        g_verbose = true;
+
     if (have_option("fps")) {
        g_fps = int(option_value("fps"));
        if (g_fps <= 0)
            terminate "option fps has invalid value, fps must be > 0\n";
     }
 
-    teensy.connect(device);
+    teensy.open(device);
     if(error()) {
         terminate "Unable to open teensy.";
     }

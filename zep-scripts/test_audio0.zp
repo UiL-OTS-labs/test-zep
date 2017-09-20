@@ -4,6 +4,8 @@ plugin zep_display;
 plugin zep_sound;
 plugin zep_ioteensy;
 
+import stats;
+
 dur g_isi       = dur(16.0 + 2.0/3.0);  // default (inter-) stimulus dur
 dur g_test_dur  = 60s;                  // default test dur.
 //dur g_test_dur  = 6s;                  // short dur.
@@ -122,7 +124,7 @@ SoundPlaybackDevice output_device
         println("Opening sounddevice" );
         println("\tid = \t\t" + device_id);
         println("\tnum chan =\t" + nch);
-        println("\tsamle rate =\t" + nch);
+        println("\tsample rate =\t" + fs);
 
         open(nch, fs, device_id);
         if (error()) terminate "Unable to open sound device.\n";
@@ -167,7 +169,8 @@ SoundPlayback stimulus
             //frequency[0] = 880;
             //frequency[0] = 1000;
             //frequency[0] = 5000;
-            frequency[0] = 40000;
+            frequency[0] = output_device.samplerate/4;
+
             scaling  [0] = 0.99;
         }
     }
@@ -235,16 +238,25 @@ Timer terminator
             i++;
         }
 
-        println("start\tend\tdur");
+        if (g_verbose) {
 
-        i = 0;
-        while (i < diff_starts.size) {
-            println("" + diff_starts[i] + "\t" +
-                         diff_ends[i]   + "\t" +
-                         diff_durs[i]
-                    );
-            i++;
+            println("start\tend\tdur");
+
+            i = 0;
+            while (i < diff_starts.size) {
+                println("" + diff_starts[i] + "\t" +
+                             diff_ends[i]   + "\t" +
+                             diff_durs[i]
+                        );
+                i++;
+            }
         }
+
+        println();
+        println("\tmean\tstd");
+        println("on-off\t" + mean(diff_durs)/1000 + "\t" + std(diff_durs)/1000);
+        println("onsets\t" + mean(diff_starts)/1000 + "\t" + std(diff_starts)/1000);
+        println("offsets\t" + mean(diff_ends)/1000 + "\t" + std(diff_ends)/1000);
     }
 }
 
@@ -265,12 +277,15 @@ start()
     if (have_option("dev"))
         teensy_dev = option_value("dev");
 
-    if (have_flag("egg")) {
+    if (have_flag("egg"))
         g_easter = true;
-    }
+
+    if (have_option("verbose") || have_option("v"))
+        g_verbose = true;
+    
 
     // Set up teensy and abort on error.
-    teensy.connect(teensy_dev);
+    teensy.open(teensy_dev);
     if (error())
         terminate;
 
