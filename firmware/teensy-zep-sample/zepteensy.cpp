@@ -1,6 +1,6 @@
 
 #include "TeensyPackage.h"
-#include "constants.h"
+#include "teensy_constants.h"
 #include "register_inputs.h"
 #include "Events.h"
 #include "CyclicQueue.h"
