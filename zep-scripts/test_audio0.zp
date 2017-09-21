@@ -103,20 +103,20 @@ SoundPlaybackDevice output_device
     init()
     {
         int nch = 2;
-        int fs = RATE_48000;
         int device_id = -1;
-//        int fs = RATE_192000;
+//        int sr = RATE_48000;
+        int sr = RATE_192000;
         if (have_option("nch"))
         {
             nch = int(option_value("nch"));
             if (nch < 2 || nch > 8)
                 terminate "nch must be: 2 <= nch <=8\n";
         }
-        if (have_option("fs"))
+        if (have_option("sr"))
         {
-            fs = int(option_value("fs"));
-            if (fs < RATE_8000 || fs > RATE_192000)
-                terminate "fs must be: 8000 <= fs <=192000\n";
+            sr = int(option_value("sr"));
+            if (sr < RATE_8000 || sr > RATE_192000)
+                terminate "sr must be: 8000 <= sr <=192000\n";
         }
         if (have_option("sounddevice")) {
             device_id = int(option_value("sounddevice"));
@@ -124,9 +124,9 @@ SoundPlaybackDevice output_device
         println("Opening sounddevice" );
         println("\tid = \t\t" + device_id);
         println("\tnum chan =\t" + nch);
-        println("\tsample rate =\t" + fs);
+        println("\tsample rate =\t" + sr);
 
-        open(nch, fs, device_id);
+        open(nch, sr, device_id);
         if (error()) terminate "Unable to open sound device.\n";
 
         //hardware_latency = 3.3ms;
