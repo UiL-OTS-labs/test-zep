@@ -44,9 +44,12 @@
         KEYBOARD_DEFS = -DLAYOUT_US_ENGLISH
 
 # Arduino and Teensyduino version numbers.
+#          ARDUINO_VER = 10603
+#      TEENSYDUINO_VER = 124
           ARDUINO_VER = 10802
-#          ARDUINO_VER = 106
       TEENSYDUINO_VER = 136
+#          ARDUINO_VER = 10804
+#      TEENSYDUINO_VER = 139
 
 # Symbols to be defined (opt.)
 #        ZEPTEENSY_DEFS = -DSOMETHING=123
@@ -55,7 +58,6 @@
             OPT_FLAGS = -O
          COMMON_FLAGS = -Wall -ffunction-sections -fdata-sections -MMD -nostdlib
 ifeq ($(TEENSY_VER), 32)
-# FIXME: DIT ZIJN DE 3.1 SYMBOLEN. CHECK & FIX!
              CPU_DEFS = -D__MK20DX256__
              LDSCRIPT = $(COREPATH)/mk20dx256.ld
 endif
@@ -82,7 +84,9 @@ endif
              BUILDDIR = ../build
 
 # Base directory for arduino  and teensyduino.
+#          ARDUINOPATH = $(HOME)/arduino-1.6.3
           ARDUINOPATH = $(HOME)/arduino-1.8.2
+#          ARDUINOPATH = $(HOME)/arduino-1.8.4
 
 # Location of Teensy Loader, teensy_post_compile and teensy_reboot.
             TOOLSPATH = $(ARDUINOPATH)/hardware/tools
