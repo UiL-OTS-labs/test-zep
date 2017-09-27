@@ -11,9 +11,10 @@ dur g_test_dur  = 60s;                  // default test dur.
 //dur g_test_dur  = 6s;                  // short dur.
 bool g_verbose  = false;                // whether verbose printing is on
 bool g_easter   = false;                // enables Easter eggs.
+string g_fn     = "output.txt";         // An output file to write to.
 
 const int SOUND_PIN = 9;                // Audio connection pin
-const int CONTINUE = 0;                 // normally defined by default modules.
+const int CONTINUE  = 0;                // normally defined by default modules.
 
 // output values
 record Output
@@ -23,6 +24,64 @@ record Output
 }
 
 Output[..] output;
+
+void append(real[] array, real value)
+{
+    array.size = array.size + 1;
+    array[array.size-1] = value;
+}
+
+// Write to a log file where we desire it.
+void recordOutput()
+{
+    real [..] diff_starts;
+    real [..] diff_ends;
+    real [..] diff_durs;
+
+    int fd = 4;
+    string fn_log;
+
+    open_log(fd);
+    if (error())
+        return;
+
+    int i = 1;
+    while (i < output.size)
+    {
+        append(diff_starts, output[i].first_time - output[i-1].first_time);
+        append(diff_ends  , output[i].last_time  - output[i-1].last_time);
+        append(diff_durs  , output[i].last_time  - output[i].first_time);
+        i++;
+    }
+
+    if (g_verbose)
+    {
+        println("start\tend\tdur");
+
+        i = 0;
+        while (i < diff_starts.size) {
+            println("" + diff_starts[i] + "\t" +
+                         diff_ends[i]   + "\t" +
+                         diff_durs[i]
+                    );
+            i++;
+        }
+    }
+
+    log(fd, "\tmean\tstd\n");
+    log(fd,
+        "on-off\t" + mean(diff_durs)/1000 + "\t" + std(diff_durs)/1000 +"\n");
+    log(fd,
+        "onsets\t" + mean(diff_starts)/1000 + "\t" + std(diff_starts)/1000 +"\n");
+    log(fd,
+        "offsets\t" + mean(diff_ends)/1000 + "\t" + std(diff_ends)/1000 +"\n");
+    
+    fn_log = log_filename(fd);
+
+    flush_log(fd);
+    close_log(fd);
+    move_file(fn_log, g_fn);
+}
 
 Teensy teensy
 {
@@ -92,6 +151,7 @@ Page test_page
     {
         if (input_key == KEY_Escape)
         {
+            teensy.close();
             terminate;
         }
     }
@@ -104,19 +164,23 @@ SoundPlaybackDevice output_device
     {
         int nch = 2;
         int device_id = -1;
-//        int sr = RATE_48000;
-        int sr = RATE_192000;
+        int sr = RATE_48000;
+        //int sr = RATE_192000;
         if (have_option("nch"))
         {
             nch = int(option_value("nch"));
-            if (nch < 2 || nch > 8)
+            if (nch < 2 || nch > 8) {
+                teensy.close();
                 terminate "nch must be: 2 <= nch <=8\n";
+            }
         }
         if (have_option("sr"))
         {
             sr = int(option_value("sr"));
-            if (sr < RATE_8000 || sr > RATE_192000)
+            if (sr < RATE_8000 || sr > RATE_192000) {
+                teensy.close();
                 terminate "sr must be: 8000 <= sr <=192000\n";
+            }
         }
         if (have_option("sounddevice")) {
             device_id = int(option_value("sounddevice"));
@@ -127,7 +191,10 @@ SoundPlaybackDevice output_device
         println("\tsample rate =\t" + sr);
 
         open(nch, sr, device_id);
-        if (error()) terminate "Unable to open sound device.\n";
+        if (error()) {
+            teensy.close();
+            terminate "Unable to open sound device.\n";
+        }
 
         //hardware_latency = 3.3ms;
     }
@@ -169,7 +236,7 @@ SoundPlayback stimulus
             //frequency[0] = 880;
             //frequency[0] = 1000;
             //frequency[0] = 5000;
-            frequency[0] = output_device.samplerate/4;
+            frequency[0] = output_device.samplerate/10;
 
             scaling  [0] = 0.99;
         }
@@ -209,54 +276,14 @@ Block trials
 
 Timer terminator
 {
-    real [..] diff_starts;
-    real [..] diff_ends;
-    real [..] diff_durs;
 
     on_event:expire()
     {
-        print_ouput();
+        teensy.close();
+        recordOutput();
         if (g_easter)
             println("Hasta la vista, baby.");
         terminate;
-    }
-
-    void append(real[] array, real value)
-    {
-        array.size = array.size + 1;
-        array[array.size-1] = value;
-    }
-
-    void print_ouput()
-    {
-        int i = 1;
-        while (i < output.size)
-        {
-            append(diff_starts, output[i].first_time - output[i-1].first_time);
-            append(diff_ends  , output[i].last_time  - output[i-1].last_time);
-            append(diff_durs  , output[i].last_time  - output[i].first_time);
-            i++;
-        }
-
-        if (g_verbose) {
-
-            println("start\tend\tdur");
-
-            i = 0;
-            while (i < diff_starts.size) {
-                println("" + diff_starts[i] + "\t" +
-                             diff_ends[i]   + "\t" +
-                             diff_durs[i]
-                        );
-                i++;
-            }
-        }
-
-        println();
-        println("\tmean\tstd");
-        println("on-off\t" + mean(diff_durs)/1000 + "\t" + std(diff_durs)/1000);
-        println("onsets\t" + mean(diff_starts)/1000 + "\t" + std(diff_starts)/1000);
-        println("offsets\t" + mean(diff_ends)/1000 + "\t" + std(diff_ends)/1000);
     }
 }
 
@@ -282,7 +309,11 @@ start()
 
     if (have_option("verbose") || have_option("v"))
         g_verbose = true;
-    
+
+    if (have_option("logfile"))
+        g_fn = option_value("logfile");
+    else
+        g_fn = "output" + int(g_isi) + ".txt";
 
     // Set up teensy and abort on error.
     teensy.open(teensy_dev);
@@ -290,8 +321,10 @@ start()
         terminate;
 
     teensy.register_input_trigger(SOUND_PIN);
-    if (error())
+    if (error()) {
+        teensy.close();
         terminate;
+    }
 
     terminator.start(event_time + g_test_dur + 2500ms);
 
