@@ -2,6 +2,7 @@
 
 #include "WProgram.h"
 #include "Clock.h"
+#include "InterruptLock.h"
 
 // Global clock for entire teensy.
 Clock gclock;
@@ -13,18 +14,27 @@ Clock::Clock()
 
 void Clock::reset()
 {
+    InterruptLock lock;
     mtime = 0;
 }
 
 uint64_t Clock::time() const
 {
-    // Make sure that an interrupt doesn't screw up the time.
-    volatile uint64_t t = mtime;
-    while (t != mtime)
+    uint64_t t;
+    {
+        InterruptLock lock;
         t = mtime;
+    }
 
     t *= TICK;
     return t;
+}
+
+void Clock::setTime(uint64_t t)
+{
+    uint64_t new_ticks = t / TICK;
+    InterruptLock lock;
+    mtime = new_ticks;
 }
 
 void Clock::start()
@@ -40,6 +50,7 @@ void Clock::stop()
 
 void Clock::_clock_inc_time()
 {
+    InterruptLock lock;
     gclock.mtime++;
 }
 

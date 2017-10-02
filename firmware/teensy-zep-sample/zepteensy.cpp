@@ -70,13 +70,13 @@ int handleIndentify()
  *
  * Specifying and invalid line is an error.
  */
-int handleRegisterInput()
+int handleRegisterInput(bool singleshot=false)
 {
     uint8_t line;
     memcpy(&line, gpackage.payload(), sizeof(line));
     if (isAcceptableInput(line)) {
         pinMode(line, INPUT_PULLUP);
-        registerInputTrigger(line);
+        registerInputTrigger(line, singleshot);
         gpackage.prepareAcknowledgeSuccess();
         gpackage.write();
     }
@@ -116,6 +116,30 @@ int handleDeregisterInput()
 }
 
 /**
+ * Handles a request to get the current time from the teensy device.
+ */
+int handleTime()
+{
+    uint64_t time = gclock.time();
+    gpackage.prepareAcknowledgeTime(time);
+    gpackage.write();
+    return 0;
+}
+
+/**
+ * Set the time sent to ourselves.
+ */
+int handleTimeSet()
+{
+    uint64_t time;
+    gpackage.readInt64(gpackage.payload(), static_cast<void*>(&time));
+    gclock.setTime(time);
+    gpackage.prepareAcknowledgeSuccess();
+    gpackage.write();
+    return 0;
+}
+
+/**
  * Reads precisely one packet from the serial device (if the packet is valid).
  * It handles the packet and sends a reply whether the packet was successfully
  * handled or an error when
@@ -138,9 +162,24 @@ int readPackage()
                 result = handleRegisterInput();
                 break;
             }
+        case TeensyPackage::REGISTER_SINGLE_SHOT:
+            if (gidentified) {
+                result = handleRegisterInput(true);
+                break;
+            }
         case TeensyPackage::DEREGISTER_INPUT:
             if (gidentified) {
                 result = handleDeregisterInput();
+                break;
+            }
+        case TeensyPackage::TIME:
+            if (gidentified) {
+                result = handleTime();
+                break;
+            }
+        case TeensyPackage::TIME_SET:
+            if (gidentified) {
+                result = handleTimeSet();
                 break;
             }
         default:
@@ -216,6 +255,8 @@ void setup()
         pinMode(i, INPUT);
         deregisterInputTrigger(i);
     }
+
+    clearPinStates();
 
     pinMode(13, OUTPUT);
 

@@ -18,6 +18,7 @@ class Clock {
 
         void reset();
         uint64_t time() const;
+        void setTime(uint64_t t);
 
         void start();
         void stop();
