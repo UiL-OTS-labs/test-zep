@@ -1,208 +1,232 @@
 
 #include "WProgram.h"
 #include "register_inputs.h"
+#include "InterruptLock.h"
 #include "Events.h"
 #include "CyclicQueue.h"
 #include "EventQueue-impl.h"
 #include "Clock.h"
+#include <vector>
 
-//typedef CyclicQueue<EventPtr> EventQueue;
+/* ************* declarations *********** */
+
 extern EventQueue gqueue;
+static void queuePinEvent(const int pin);
 
-void change0()
+#define MAX_PINS 24
+
+
+/* ************* pin states ************ */
+
+PinState g_pinstates[MAX_PINS];
+
+/* ************* implementation of Pinstate *************/
+
+PinState::PinState()
+    :
+        m_state(0)
 {
-    unsigned long us = gclock.time();
-    const int pin = 0;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
 }
 
-void change1()
+PinState::PinState(const PinState& other)
 {
-    unsigned long us = gclock.time();
-    const int pin = 1;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    *this = other;
 }
 
-void change2()
+PinState::PinState(uint8_t state)
+    :
+        m_state(state)
 {
-    unsigned long us = gclock.time();
-    const int pin = 2;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
 }
 
-void change3()
+PinState& PinState::operator=(const PinState& rhs)
 {
-    unsigned long us = gclock.time();
-    const int pin = 3;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    m_state = rhs.m_state;
+    return *this;
 }
 
-void change4()
+uint8_t PinState::state() const
 {
-    unsigned long us = gclock.time();
-    const int pin = 4;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    return m_state;
 }
 
-void change5()
+void PinState::setLogicLevel(int level)
 {
-    unsigned long us = gclock.time();
-    const int pin = 5;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    if (level)
+        m_state |= LOGIC_HIGH;
+    else
+        m_state &= ~LOGIC_HIGH;
 }
 
-void change6()
+bool PinState::logicLevel() const
 {
-    unsigned long us = gclock.time();
-    const int pin = 6;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    return (m_state & LOGIC_HIGH) != 0;
 }
 
-void change7()
+void PinState::flipLogicLevel()
 {
-    unsigned long us = gclock.time();
-    const int pin = 7;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    m_state ^= LOGIC_HIGH;
 }
 
-void change8()
+/* ******** Interrupt Service Routines *********** */
+
+static void change0()
 {
-    unsigned long us = gclock.time();
-    const int pin = 8;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(0);
 }
 
-void change9()
+static void change1()
 {
-    unsigned long us = gclock.time();
-    const int pin = 9;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(1);
 }
 
-void change10()
+static void change2()
 {
-    unsigned long us = gclock.time();
-    const int pin = 10;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(2);
 }
 
-void change11()
+static void change3()
 {
-    unsigned long us = gclock.time();
-    const int pin = 11;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(3);
 }
 
-void change12()
+static void change4()
 {
-    unsigned long us = gclock.time();
-    const int pin = 12;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(4);
 }
 
-void change13()
+static void change5()
 {
-    unsigned long us = gclock.time();
-    const int pin = 13;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(5);
 }
 
-void change14()
+static void change6()
 {
-    unsigned long us = gclock.time();
-    const int pin = 14;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(6);
 }
 
-void change15()
+static void change7()
 {
-    unsigned long us = gclock.time();
-    const int pin = 15;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(7);
 }
 
-void change16()
+static void change8()
 {
-    unsigned long us = gclock.time();
-    const int pin = 16;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(8);
 }
 
-void change17()
+static void change9()
 {
-    unsigned long us = gclock.time();
-    const int pin = 17;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(9);
 }
 
-void change18()
+static void change10()
 {
-    unsigned long us = gclock.time();
-    const int pin = 18;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(10);
 }
 
-void change19()
+static void change11()
 {
-    unsigned long us = gclock.time();
-    const int pin = 19;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(11);
 }
 
-void change20()
+static void change12()
 {
-    unsigned long us = gclock.time();
-    const int pin = 20;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(12);
 }
 
-void change21()
+static void change13()
 {
-    unsigned long us = gclock.time();
-    const int pin = 21;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(13);
 }
 
-void change22()
+static void change14()
 {
-    unsigned long us = gclock.time();
-    const int pin = 22;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(14);
 }
 
-void change23()
+static void change15()
 {
-    unsigned long us = gclock.time();
-    const int pin = 23;
-    int level = digitalRead(pin);
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+    queuePinEvent(15);
 }
 
-int registerInputTrigger(uint8_t line)
+static void change16()
 {
+    queuePinEvent(16);
+}
+
+static void change17()
+{
+    queuePinEvent(17);
+}
+
+static void change18()
+{
+    queuePinEvent(18);
+}
+
+static void change19()
+{
+    queuePinEvent(19);
+}
+
+static void change20()
+{
+    queuePinEvent(20);
+}
+
+static void change21()
+{
+    queuePinEvent(21);
+}
+
+static void change22()
+{
+    queuePinEvent(22);
+}
+
+static void change23()
+{
+    queuePinEvent(23);
+}
+
+/* ******** functions *********** */
+
+static void queuePinEvent(const int pin)
+{
+    uint64_t us = gclock.time();
+    int logic_level;
+
+    if (pin < 0 || pin >= MAX_PINS)
+        return; // oops...
+
+    {
+        InterruptLock lock;
+        logic_level = digitalRead(pin);
+    }
+
+    g_pinstates[pin].setLogicLevel(logic_level);
+    uint8_t  level = g_pinstates[pin].state() & PinState::LOGIC_HIGH ? 1 : 0;
+
+    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+
+    if (g_pinstates[pin].state() & PinState::SINGLE_SHOT) {
+        deregisterInputTrigger(pin);
+        g_pinstates[pin] = PinState();
+    }
+}
+
+int registerInputTrigger(uint8_t line, bool single_shot)
+{
+    uint8_t state = PinState::REGISTERED;
+    state |= digitalRead(line) == HIGH ? PinState::LOGIC_HIGH : 0;
+    state |= single_shot ? PinState::SINGLE_SHOT : 0;
+    
+    if (line < MAX_PINS) // perhaps a bit pedantic...
+        g_pinstates[line] = PinState(state);
+    else
+        return -1;
+
     switch(line) {
         case 0:
             attachInterrupt(line, change0, CHANGE);
@@ -285,8 +309,9 @@ int registerInputTrigger(uint8_t line)
 int deregisterInputTrigger(uint8_t line)
 {
     int err = 0;
-    if (line < 24) {
+    if (line < MAX_PINS) {
         detachInterrupt(line);
+        g_pinstates[line] = PinState();
     }
     else {
         err = 1;
@@ -294,3 +319,8 @@ int deregisterInputTrigger(uint8_t line)
     return err;
 }
 
+void clearPinStates()
+{
+    for (unsigned i = 0; i < MAX_PINS; ++i)
+        g_pinstates[i] = PinState();
+}
