@@ -195,10 +195,11 @@ static void change23()
 static void queuePinEvent(const int pin)
 {
     uint64_t us = gclock.time();
+    int logic_level;
+
     if (pin < 0 || pin >= MAX_PINS)
         return; // oops...
 
-    int logic_level;  
     {
         InterruptLock lock;
         logic_level = digitalRead(pin);
@@ -207,12 +208,12 @@ static void queuePinEvent(const int pin)
     g_pinstates[pin].setLogicLevel(logic_level);
     uint8_t  level = g_pinstates[pin].state() & PinState::LOGIC_HIGH ? 1 : 0;
 
+    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
+
     if (g_pinstates[pin].state() & PinState::SINGLE_SHOT) {
         deregisterInputTrigger(pin);
         g_pinstates[pin] = PinState();
     }
-
-    gqueue.enqueue(std::make_shared<TriggeredEvent>(us, pin, level));
 }
 
 int registerInputTrigger(uint8_t line, bool single_shot)
