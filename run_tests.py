@@ -13,6 +13,8 @@ test_dir        = run_test_dir.joinpath(Path("zep-scripts/"))
 audio_test      = Path(test_dir, "test_audio0.zp")
 monitor_test    = Path(test_dir, "test_monitor3.zp")
 framerate       = 60
+target_head     = 0
+verbose         = False
 
 skip_audio      = False;
 skip_monitor    = False
@@ -50,9 +52,11 @@ def run_audio_tests():
                     audio_test,
                     create_zep_argument("dev", teensypath),
                     create_zep_argument("isi", i*1000),
-                    create_zep_argument("logfile", Path.joinpath(datadir, fn))
+                    create_zep_argument("logfile", Path.joinpath(datadir, fn)),
+                    "--verbose" if verbose else ""
                     )
-        print("running", command)
+        if verbose:
+            print("running", command)
         status = os.system(command)
         if status != 0:
             return status
@@ -70,9 +74,12 @@ def run_monitor_tests():
                     monitor_test,
                     create_zep_argument("dev", teensypath),
                     create_zep_argument("nframes", i),
-                    create_zep_argument("logfile", Path.joinpath(datadir, fn))
+                    create_zep_argument("logfile", Path.joinpath(datadir, fn)),
+                    create_zep_argument("target-head", target_head),
+                    "--verbose" if verbose else ""
                     )
-        print("running", command)
+        if verbose:
+            print("running", command)
         status = os.system(command)
         if status != 0:
             return status
@@ -87,8 +94,9 @@ def run_tests():
 
 def parse_cmd():
     '''parses command line options and sets global variables.'''
-    global teensypath, skip_monitor, skip_audio, nframes, framerate
-    parser = argparse.ArgumentParser()
+    global teensypath, skip_monitor, skip_audio,\
+           nframes, framerate, target_head, verbose
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-t",
                         "--teensy",
                         help="Specify COM or filename",
@@ -108,6 +116,15 @@ def parse_cmd():
                         default=60,
                         help="skip the monitor tests."
                         )
+    parser.add_argument("--target-head",
+                        type=int,
+                        default=0,
+                        help="specify default target head for monitor test."
+                        )
+    parser.add_argument("-v", "--verbose",
+                        action="store_true",
+                        help="Specify for verbose output."
+                        )
 
     args = parser.parse_args()
     if args.skip_audio:
@@ -116,6 +133,10 @@ def parse_cmd():
         skip_monitor = True
     if args.frame_rate:
         framerate = args.frame_rate
+    if args.target_head:
+        target_head = args.target_head
+    if args.verbose:
+        verbose = True
 
     nframes = [i/(1.0/framerate) for i in stimulus_durations]
     teensypath = Path(args.teensy)

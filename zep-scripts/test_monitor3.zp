@@ -38,7 +38,6 @@ record Output
     int logic_level;
 }
 
-
 void array_append(real[] ar, real value)
 {
     ar.size         = ar.size + 1;
@@ -47,7 +46,7 @@ void array_append(real[] ar, real value)
 
 void set_expected_durations(real fdur_us, real sdur_us)
 {
-    g_stim_dur  = fdur_us;
+    g_stim_dur  = sdur_us;
     g_frame_dur = fdur_us;
 }
 
@@ -100,7 +99,7 @@ void recordOuput()
 
     // set expected durations.
     frame_dur = g_frame_dur;
-    stim_dur = g_stim_dur;
+    stim_dur  = g_stim_dur;
     if (g_verbose) {
         println();
         println( "frame dur             = " + frame_dur + " µs");
@@ -363,6 +362,9 @@ start()
         if (g_nframes <= 0)
             terminate "option nframes has invalid value, nframes must be > 0\n";
     }
+
+    if (have_option("target-head"))
+        test_window.target_head = int (option_value("target-head"));
 
     if (have_flag("v") || have_flag("verbose"))
         g_verbose = true;
