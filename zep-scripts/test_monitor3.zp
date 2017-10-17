@@ -5,8 +5,10 @@ plugin zep_display;
 plugin zep_string;
 plugin zep_struct;
 plugin zep_ioteensy;
+plugin zep_iospp;
 
 import stats;
+import io_spp_settings;
 
 /*************** Zep specific **************/
 // Continue is normally defined in defs.zm or since Zep-2.0 in std_control.zm
@@ -29,6 +31,7 @@ real        g_frame_dur;          // theoretical frame duration.
 bool g_terminate_on_finish  = true;
 
 const int PHOTO_DIODE_PIN   = 10;
+const int SPP_PIN           = 12;
 
 /*************** utilities ********/
 
@@ -54,7 +57,7 @@ void set_expected_durations(real fdur_us, real sdur_us)
 
 Output[..]  output;
 
-void recordOuput()
+void recordOutput()
 {
     int i;                      // index
     int mframe;                 // missed frame
@@ -141,7 +144,46 @@ void recordOuput()
     move_file(log_fn, g_fn);
 }
 
-/*************** objects *********/
+/*************** objects ****************/
+
+SPP spp
+{
+    cleanup()
+    {
+        write_data(0);
+        close();
+    }
+}
+
+Timer spp_timer
+{
+    const int high = 0xFF;
+    const int low  = 0x00;
+
+    int state;
+
+    on_event:expire()
+    {
+        spp.write_data(state);
+        if (state) state = low;
+        else       state = high;
+        
+        int nwin = test_window.target_head;
+        time cur_display = display_device.current_frame_time[nwin];
+
+        dur time_diff = dur(abs(real(event_time) - real(cur_display)));
+
+        if (time_diff > 3.1415ms)
+            // Missed (a/muliple) frame(s), hence sync with expire time
+            start(expire_time + dur(g_stim_dur) / 1000);
+        else
+            // The current display time seems accurate, so use that.
+            start(cur_display + dur(g_stim_dur) / 1000);
+        
+        // this is to easy and might drift.
+        //start(expire_time + dur(g_stim_dur / 1000));
+    }
+}
 
 Teensy teensy {
 
@@ -163,13 +205,9 @@ Teensy teensy {
         output[output.size - 1] = out;
     }
 
-
     on_event:cleanup()
     {
-
-
-        recordOuput();
-
+        recordOutput();
     }
 }
 
@@ -341,6 +379,8 @@ Page test_page
 
         canvas.rect.start_fr(start_frame + g_fps/2 , g_tot_frames);
         teensy.register_input_trigger(PHOTO_DIODE_PIN);
+        teensy.register_input_trigger(SPP_PIN);
+        spp_timer.start(canvas.rect.expected_start_time);
     }
 }
 
@@ -349,6 +389,7 @@ start()
     test_window.show_page(test_page);
     test_page.hide_cursor();
     string device = "/dev/ttyACM0";
+    int port_addr = 0;
 
     display_device.open();
     if (error())
@@ -379,6 +420,15 @@ start()
         g_fn = option_value("logfile");
     else
         g_fn = "output" + int(1.0/g_fps*1000) + ".txt";
+
+    // Setup parallel port.
+    spp.open(port_addr);
+    if(!spp.is_open) {
+        println("Unable to open parallel port: " + port_addr);
+        terminate;
+    }
+    spp.data_is_output = true;
+    spp.data_output_mask = 0xFF;
 
     teensy.open(device);
     if(error()) {

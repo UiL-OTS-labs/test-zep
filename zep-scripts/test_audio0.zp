@@ -3,12 +3,14 @@
 plugin zep_display;
 plugin zep_sound;
 plugin zep_ioteensy;
+plugin zep_iospp;
 
 import stats;
+import io_spp_settings;
 
 dur g_isi       = dur(16.0 + 2.0/3.0);  // default (inter-) stimulus dur
-dur g_test_dur  = 60s;                  // default test dur.
-//dur g_test_dur  = 6s;                  // short dur.
+//dur g_test_dur  = 60s;                  // default test dur.
+dur g_test_dur  = 6s;                   // short dur.
 bool g_verbose  = false;                // whether verbose printing is on
 bool g_easter   = false;                // enables Easter eggs.
 string g_fn     = "output.txt";         // An output file to write to.
@@ -99,6 +101,41 @@ Teensy teensy
         if (!tstart)
             tstart = timestamp;
         tend = timestamp;
+    }
+}
+
+SPP spp
+{
+    // doesn't need initialization
+    on_event:cleanup()
+    {
+        spp.write_data(0);
+        spp.close();
+    }
+}
+
+Timer spp_timer_off
+{
+    on_event:expire()
+    {
+        spp.write_data(0x00);
+    }
+}
+
+Timer spp_timer_on
+{
+    time the_end;
+
+    on_event:expire()
+    {
+        spp.write_data(0xFF);
+        spp_timer_off.start(the_end);
+    }
+
+    void begin(time beg, time end)
+    {
+        the_end = end;
+        start(beg);
     }
 }
 
@@ -236,7 +273,8 @@ SoundPlayback stimulus
             //frequency[0] = 880;
             //frequency[0] = 1000;
             //frequency[0] = 5000;
-            frequency[0] = output_device.samplerate/10;
+            //frequency[0] = output_device.samplerate/25;
+            frequency[0] = 2000;
 
             scaling  [0] = 0.99;
         }
@@ -270,6 +308,10 @@ Block trials
         {
             stimulus.set_target(this);
             stimulus.start(reference_time + g_isi);
+            spp_timer_on.begin(
+                    stimulus.expected_start_time,
+                    stimulus.expected_finish_time
+                    );
         }
     }
 }
@@ -291,6 +333,7 @@ start()
 {
     test_window.show_page(test_page);
     string teensy_dev = "/dev/ttyACM0";
+    int port_addr = 0;
 
     if (have_option("hwlatency"))
         output_device.hardware_latency = dur(option_value("hwlatency"));
@@ -315,11 +358,21 @@ start()
     else
         g_fn = "output" + int(g_isi) + ".txt";
 
+    spp.open(port_addr);
+    if (!spp.is_open) {
+        println("Unable to open parallel port: " + port_addr);
+        terminate;
+    }
+    spp.data_is_output = true;
+    spp.data_output_mask = 0xFF;
+
     // Set up teensy and abort on error.
+    println("Open teensy.");
     teensy.open(teensy_dev);
     if (error())
         terminate;
 
+    println("register input trigger.");
     teensy.register_input_trigger(SOUND_PIN);
     if (error()) {
         teensy.close();
