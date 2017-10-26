@@ -47,6 +47,12 @@ void array_append(real[] ar, real value)
     ar[ar.size - 1] = value;
 }
 
+void array_append(int[] ar, int value)
+{
+    ar.size         = ar.size + 1;
+    ar[ar.size - 1] = value;
+}
+
 void set_expected_durations(real fdur_us, real sdur_us)
 {
     g_stim_dur  = sdur_us;
@@ -56,86 +62,69 @@ void set_expected_durations(real fdur_us, real sdur_us)
 /*************** output **********/
 
 Output[..]  output;
+int[..]     spp_on;
+int[..]     spp_off;
 
 void recordOutput()
 {
     int i;                      // index
     int mframe;                 // missed frame
     int sframe;                 // short frames. (stimulus to short presented)
-    real[..]    diffs;          // differential vector (shows interval between
-                                // two successive frames).
-    real[..]    diff_on_off;    // diffs of frames that went on or off.
+    //real[..]    diffs;          // differential vector (shows interval between
+    //                            // two successive frames).
+    //real[..]    diff_on_off;    // diffs of frames that went on or off.
+    real [..]     disp_on;      // display on.
+    real [..]     disp_off;     // display off.
     int fd = 4;
     real frame_dur;
     real stim_dur;
 
     string log_fn;
     open_log(fd);
+
+//    println("output.size = "    + output.size +
+//            ", spp_on.size = "   + spp_on.size +
+//            ", spp_off.size = "  + spp_off.size
+//            );
+//    //TODO Create a way to produce exactly 1800 on and offsets...
+//
+//    return;
     
-    while (i < output.size)
-    {
-        if (i == 0) {
-            if (g_verbose)
-                println(""   + output[i].logic_level +
-                        "\t" + output[i].timestamp
-                        );
-        }
-        else
-        {
-            if (g_verbose)
-                println("" + output[i].logic_level + "\t"
-                           + output[i].timestamp   + "\t" 
-                           + (output[i].timestamp - output[i-1].timestamp)
-                        );
-            array_append(
-                    diffs,
-                    output[i].timestamp - output[i-1].timestamp
-                    );
-            if (i >= 2)
-                array_append(
-                        diff_on_off,
-                        output[i].timestamp - output[i-2].timestamp
-                        );
-        }
-        i++;
-    }
-
-    // set expected durations.
-    frame_dur = g_frame_dur;
-    stim_dur  = g_stim_dur;
-    if (g_verbose) {
-        println();
-        println( "frame dur             = " + frame_dur + " µs");
-        println( "expected stimulus dur = " + stim_dur  + " µs");
-        println( "valid stim interval   = " + (stim_dur - .75 * frame_dur) +
-                                          " µs < dur < "
-                                            + (stim_dur + .25 * frame_dur) + " µs"
-                                            );
-    }
-
+    // Demultiplex into on and off.
     i = 0;
-    while(i < diffs.size)
-    { 
-        if (diffs[i] > stim_dur + .25 * frame_dur)
-            mframe++;
-        else if (diffs[i] < stim_dur - .75 * frame_dur)
-            sframe++;
+    while(i < output.size) {
+        if (output[i].logic_level)
+            array_append(disp_on, output[i].timestamp);
+        else
+            array_append(disp_off, output[i].timestamp);
         i++;
     }
 
-    log(fd, "missed frames  = " + mframe + "\n");
-    log(fd, "to short stims = " + sframe + "\n");
-    log(fd, "total frames   = " + output.size + "\n");
-
-    if (diffs.size != 0) {
-        println();
-        log(fd, "\tmean\tsd" + "\n");
-        // This compares an on- and an offset of a stimulus
-        log(fd, "Single stim\t" +
-                mean(diffs)/1000 + "\t" + std(diffs)/1000 + "\n");
-        // This compares the stimuli betwee two onsets or two offsets
-        log(fd, "Double stim\t" +
-                mean(diff_on_off)/1000 + "\t" + std(diff_on_off)/1000 + "\n");
+    if(disp_on.size != disp_off.size ||
+        disp_off.size != spp_on.size ||
+        spp_on.size != spp_off.size)
+    {
+        print_error("Oops not all arrays are of equal size.\n");
+    }
+    
+    i = 0;
+    log(fd, "spp_on\tspp_of\tmon_on\tmon_off\n");
+    while (i < spp_off.size)
+    {
+        log(fd, ""); 
+        if (i < spp_on.size)
+            log(fd, "" + spp_on[i]);
+        log(fd, "\t");
+        if (i < spp_off.size)
+            log(fd, "" + spp_off[i]);
+        log(fd, "\t");
+        if (i < disp_on.size)
+            log(fd, "" + disp_on[i]);
+        log(fd, "\t");
+        if (i < disp_off.size)
+            log(fd, "" + disp_off[i]);
+        log(fd, "\n");
+        i++;
     }
 
     log_fn = log_filename(fd);
@@ -174,7 +163,7 @@ Timer spp_timer
         dur time_diff = dur(abs(real(event_time) - real(cur_display)));
 
         if (time_diff > 3.1415ms)
-            // Missed (a/muliple) frame(s), hence sync with expire time
+            // Missed (a/multiple) frame(s), hence sync with expire time
             start(expire_time + dur(g_stim_dur) / 1000);
         else
             // The current display time seems accurate, so use that.
@@ -185,18 +174,28 @@ Timer spp_timer
     }
 }
 
-Teensy teensy {
-
+Teensy teensy
+{
     on_event:init()
     {
     }
 
     on_event:triggered()
     {
-        Output out;
-        out.timestamp   = timestamp;
-        out.logic_level = line_value;
-        append(out);
+        if (line == PHOTO_DIODE_PIN) {
+            Output out;
+            out.timestamp   = timestamp;
+            out.logic_level = line_value;
+            append(out);
+        }
+        else if (line == SPP_PIN) {
+            if (line_value != 0) {
+                array_append(spp_on,  timestamp);
+            }
+            else{
+                array_append(spp_off, timestamp);
+            }
+        }
     }
 
     void append(Output out)
@@ -429,6 +428,7 @@ start()
     }
     spp.data_is_output = true;
     spp.data_output_mask = 0xFF;
+    spp.write_data(0XFF);
 
     teensy.open(device);
     if(error()) {

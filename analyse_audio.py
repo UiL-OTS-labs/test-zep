@@ -75,7 +75,7 @@ def process(fn):
 
 def main():
     parser = a.ArgumentParser()
-    parser.add_argument("files",nargs='+', help="The input files to process.")
+    parser.add_argument("files", nargs='+', help="The input files to process.")
 
     pa = parser.parse_args();
     files = pa.files
