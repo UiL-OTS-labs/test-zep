@@ -293,7 +293,7 @@ Block trials
         on_event:entry()
         {
             stimulus.set_target(this);
-            stimulus.start(reference_time + g_isi);
+            stimulus.start(event_time + g_isi);
             spp_timer_on.begin(
                     stimulus.expected_start_time,
                     stimulus.expected_finish_time
