@@ -6,6 +6,7 @@ import sys
 import os
 import os.path
 from pathlib import Path
+import platform
 
 teensypath      = Path()
 run_test_dir    = Path(sys.argv[0]).parent
@@ -31,7 +32,12 @@ def create_zep_command(script, *script_options):
     @param script the name of the script
     @param script_options the options/arguments for the script
     '''
-    command = "zep-2.0 {}".format(str(script))
+    command = ""
+    if platform.system().lower() == "windows":
+        command = "zep {}".format(str(script))
+    else:
+        command = "zep-2.0 {}".format(str(script))
+        
     for opt in script_options:
         command = "".join([command, " ", opt])
     return command
@@ -43,7 +49,7 @@ def create_zep_argument(name, value):
 def run_audio_tests():
     '''Runs the audio measurement tests.'''
     datadir = Path(os.path.abspath("./data"))
-    unameinfo = os.uname()
+    unameinfo = platform.uname()
     for i in stimulus_durations:
         opersys = unameinfo[0]
         arch = unameinfo[4]
@@ -65,7 +71,7 @@ def run_audio_tests():
 def run_monitor_tests():
     '''Runs the monitor/video performance tests.'''
     datadir = Path(os.path.abspath("./data"))
-    unameinfo = os.uname()
+    unameinfo = platform.uname()
     for i in nframes:
         opersys = unameinfo[0]
         arch = unameinfo[4]
