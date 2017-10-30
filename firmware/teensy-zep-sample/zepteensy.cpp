@@ -215,7 +215,6 @@ int sendEvent(const EventPtr e)
     };
 
     err = gpackage.write();
-    Serial.flush();
 
     return err;
 }
@@ -238,6 +237,7 @@ void handleClient()
                 continue;
             err = sendEvent(e);
         }
+        Serial.send_now();
     }
 }
 

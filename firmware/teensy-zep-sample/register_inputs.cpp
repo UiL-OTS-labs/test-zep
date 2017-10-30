@@ -194,14 +194,16 @@ static void change23()
 
 static void queuePinEvent(const int pin)
 {
-    uint64_t us = gclock.time();
+    uint64_t us;
     int logic_level;
-
-    if (pin < 0 || pin >= MAX_PINS)
-        return; // oops...
-
     {
         InterruptLock lock;
+
+        us = gclock.time();
+
+        if (pin < 0 || pin >= MAX_PINS)
+            return; // oops...
+
         logic_level = digitalRead(pin);
     }
 
