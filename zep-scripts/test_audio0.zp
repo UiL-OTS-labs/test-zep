@@ -10,7 +10,6 @@ import io_spp_settings;
 
 dur g_isi       = dur(16.0 + 2.0/3.0);  // default (inter-) stimulus dur
 dur g_test_dur  = 60s;                  // default test dur.
-//dur g_test_dur  = 6s;                   // short dur.
 bool g_verbose  = false;                // whether verbose printing is on
 bool g_easter   = false;                // enables Easter eggs.
 string g_fn     = "output.txt";         // An output file to write to.
@@ -326,6 +325,9 @@ start()
 
     if (have_option("isi"))
         g_isi = dur(option_value("isi"));
+    
+    if (have_option("duration"))
+        g_test_dur = dur(option_value("duration"));
 
     if (have_option("freq"))
         stimulus.clip.frequency[0] = int(option_value("freq"));

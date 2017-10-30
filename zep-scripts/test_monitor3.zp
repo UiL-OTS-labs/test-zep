@@ -20,8 +20,6 @@ int g_height                = 500;
 int g_fps                   = 60;
 int g_nframes               = 1;        // Length of stimulus in frames.
 int g_tot_frames            = 60 * 60;  // One minute.
-//int g_tot_frames            = 6 * 60;   // One tenth of a minute.
-//int g_tot_frames            = 6;        //one hundred of a minute;
 bool g_verbose              = false;
 string g_fn;                      // output filename.
     
@@ -414,11 +412,21 @@ start()
        if (g_fps <= 0)
            terminate "option fps has invalid value, fps must be > 0\n";
     }
+    
+    if (have_option("duration")) {
+        dur test_dur = dur(option_value("duration"));
+        int test_dur_sec = int(test_dur)/1000;
+        if (test_dur_sec == 0)
+            print_error("Invalid duration\n");
+        else
+            g_tot_frames = test_dur_sec * g_fps;
+        println("g_nframes = " + g_tot_frames);
+    }
 
     if(have_option("logfile"))
         g_fn = option_value("logfile");
     else
-        g_fn = "output" + int(1.0/g_fps*1000) + ".txt";
+        g_fn = "output" + int(round(1.0/g_fps*1000)) + ".txt";
 
     // Setup parallel port.
     spp.open(port_addr);
