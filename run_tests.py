@@ -15,6 +15,7 @@ audio_test      = Path(test_dir, "test_audio0.zp")
 monitor_test    = Path(test_dir, "test_monitor3.zp")
 framerate       = 60
 target_head     = 0
+sounddevice     = -1
 verbose         = False
 
 skip_audio      = False;
@@ -57,6 +58,7 @@ def run_audio_tests():
         command = create_zep_command(
                     audio_test,
                     create_zep_argument("dev", teensypath),
+                    create_zep_argument("sounddevice", sounddevice),
                     create_zep_argument("isi", i*1000),
                     create_zep_argument("logfile", Path.joinpath(datadir, fn)),
                     "--verbose" if verbose else ""
@@ -127,6 +129,11 @@ def parse_cmd():
                         default=0,
                         help="specify default target head for monitor test."
                         )
+    parser.add_argument("--sounddevice",
+                        type=int,
+                        default=-1,
+                        help="specify sounddevice (see output of zepsndinfo)"
+                        )
     parser.add_argument("-v", "--verbose",
                         action="store_true",
                         help="Specify for verbose output."
@@ -135,6 +142,8 @@ def parse_cmd():
     args = parser.parse_args()
     if args.skip_audio:
         skip_audio = True
+    if args.sounddevice:
+        skip_audio = args.sounddevice
     if args.skip_monitor:
         skip_monitor = True
     if args.frame_rate:
