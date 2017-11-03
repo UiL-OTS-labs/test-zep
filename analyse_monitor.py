@@ -4,6 +4,7 @@ import argparse as a
 import csv
 import sys
 import numpy as np
+import math
 
 framedur = int(round(16.0e6 + 2e6/3.0e6))
 
@@ -67,11 +68,13 @@ def process(fn):
     good_trials = 0 # trials where the stimulus was presented on time
     short_frames= 0 # number of vsyncs the stimulus was presented to early
     long_frames = 0 # number of vsyncs the stimulus was presented to late.
+    
+    # the times between the presentation of 2 stimuli.
+    stimdiffs = np.diff(display_times)
 
-    for i in range(1, len(display_times)):
-        diff = display_times[i] - display_times[i-1]
-        time_discrepancy = diff - mean_spp
-        nframes = int(round(time_discrepancy / framedur))
+    for i in stimdiffs:
+        time_discrepancy = i - mean_spp
+        nframes = int(round((time_discrepancy) / framedur))
         if nframes == 0:
             good_trials     += 1
         elif nframes < 0:

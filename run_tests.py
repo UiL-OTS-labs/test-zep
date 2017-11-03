@@ -17,6 +17,7 @@ framerate       = 60
 target_head     = 0
 sounddevice     = -1
 verbose         = False
+duration        = "60s"
 
 skip_audio      = False;
 skip_monitor    = False
@@ -61,6 +62,7 @@ def run_audio_tests():
                     create_zep_argument("sounddevice", sounddevice),
                     create_zep_argument("isi", i*1000),
                     create_zep_argument("logfile", Path.joinpath(datadir, fn)),
+                    create_zep_argument("duration", duration),
                     "--verbose" if verbose else ""
                     )
         if verbose:
@@ -84,6 +86,8 @@ def run_monitor_tests():
                     create_zep_argument("nframes", i),
                     create_zep_argument("logfile", Path.joinpath(datadir, fn)),
                     create_zep_argument("target-head", target_head),
+                    create_zep_argument("duration", duration),
+                    "--autostart",
                     "--verbose" if verbose else ""
                     )
         if verbose:
@@ -103,7 +107,7 @@ def run_tests():
 def parse_cmd():
     '''parses command line options and sets global variables.'''
     global teensypath, skip_monitor, skip_audio,\
-           nframes, framerate, target_head, verbose
+           nframes, framerate, target_head, verbose, duration
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-t",
                         "--teensy",
@@ -123,6 +127,10 @@ def parse_cmd():
                         type=int,
                         default=60,
                         help="skip the monitor tests."
+                        )
+    parser.add_argument("-d", "--duration",
+                        default="60s",
+                        help="Specify duration of 1 test in seconds."
                         )
     parser.add_argument("--target-head",
                         type=int,
@@ -148,6 +156,8 @@ def parse_cmd():
         skip_monitor = True
     if args.frame_rate:
         framerate = args.frame_rate
+    if args.duration:
+        duration = args.duration
     if args.target_head:
         target_head = args.target_head
     if args.verbose:
