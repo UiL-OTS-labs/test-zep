@@ -85,6 +85,7 @@ def run_monitor_tests():
                     create_zep_argument("logfile", Path.joinpath(datadir, fn)),
                     create_zep_argument("target-head", target_head),
                     create_zep_argument("duration", duration),
+                    "--autostart",
                     "--verbose" if verbose else ""
                     )
         if verbose:
