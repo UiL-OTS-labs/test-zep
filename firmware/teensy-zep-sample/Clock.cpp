@@ -21,10 +21,7 @@ void Clock::reset()
 uint64_t Clock::time() const
 {
     uint64_t t;
-    {
-        InterruptLock lock;
-        t = mtime;
-    }
+    t = mtime;
 
     t *= TICK;
     return t;

@@ -5,8 +5,10 @@ plugin zep_display;
 plugin zep_string;
 plugin zep_struct;
 plugin zep_ioteensy;
+plugin zep_iospp;
 
 import stats;
+import io_spp_settings;
 
 /*************** Zep specific **************/
 // Continue is normally defined in defs.zm or since Zep-2.0 in std_control.zm
@@ -18,8 +20,6 @@ int g_height                = 500;
 int g_fps                   = 60;
 int g_nframes               = 1;        // Length of stimulus in frames.
 int g_tot_frames            = 60 * 60;  // One minute.
-//int g_tot_frames            = 6 * 60;   // One tenth of a minute.
-//int g_tot_frames            = 6;        //one hundred of a minute;
 bool g_verbose              = false;
 string g_fn;                      // output filename.
     
@@ -29,6 +29,7 @@ real        g_frame_dur;          // theoretical frame duration.
 bool g_terminate_on_finish  = true;
 
 const int PHOTO_DIODE_PIN   = 10;
+const int SPP_PIN           = 12;
 
 /*************** utilities ********/
 
@@ -44,6 +45,12 @@ void array_append(real[] ar, real value)
     ar[ar.size - 1] = value;
 }
 
+void array_append(int[] ar, int value)
+{
+    ar.size         = ar.size + 1;
+    ar[ar.size - 1] = value;
+}
+
 void set_expected_durations(real fdur_us, real sdur_us)
 {
     g_stim_dur  = sdur_us;
@@ -53,86 +60,58 @@ void set_expected_durations(real fdur_us, real sdur_us)
 /*************** output **********/
 
 Output[..]  output;
+int[..]     spp_on;
+int[..]     spp_off;
 
-void recordOuput()
+void recordOutput()
 {
     int i;                      // index
     int mframe;                 // missed frame
     int sframe;                 // short frames. (stimulus to short presented)
-    real[..]    diffs;          // differential vector (shows interval between
-                                // two successive frames).
-    real[..]    diff_on_off;    // diffs of frames that went on or off.
+    real [..]     disp_on;      // display on.
+    real [..]     disp_off;     // display off.
     int fd = 4;
     real frame_dur;
     real stim_dur;
 
     string log_fn;
     open_log(fd);
-    
-    while (i < output.size)
-    {
-        if (i == 0) {
-            if (g_verbose)
-                println(""   + output[i].logic_level +
-                        "\t" + output[i].timestamp
-                        );
-        }
-        else
-        {
-            if (g_verbose)
-                println("" + output[i].logic_level + "\t"
-                           + output[i].timestamp   + "\t" 
-                           + (output[i].timestamp - output[i-1].timestamp)
-                        );
-            array_append(
-                    diffs,
-                    output[i].timestamp - output[i-1].timestamp
-                    );
-            if (i >= 2)
-                array_append(
-                        diff_on_off,
-                        output[i].timestamp - output[i-2].timestamp
-                        );
-        }
-        i++;
-    }
 
-    // set expected durations.
-    frame_dur = g_frame_dur;
-    stim_dur  = g_stim_dur;
-    if (g_verbose) {
-        println();
-        println( "frame dur             = " + frame_dur + " µs");
-        println( "expected stimulus dur = " + stim_dur  + " µs");
-        println( "valid stim interval   = " + (stim_dur - .75 * frame_dur) +
-                                          " µs < dur < "
-                                            + (stim_dur + .25 * frame_dur) + " µs"
-                                            );
-    }
-
+    // Demultiplex into on and off.
     i = 0;
-    while(i < diffs.size)
-    { 
-        if (diffs[i] > stim_dur + .25 * frame_dur)
-            mframe++;
-        else if (diffs[i] < stim_dur - .75 * frame_dur)
-            sframe++;
+    while(i < output.size) {
+        if (output[i].logic_level)
+            array_append(disp_on, output[i].timestamp);
+        else
+            array_append(disp_off, output[i].timestamp);
         i++;
     }
 
-    log(fd, "missed frames  = " + mframe + "\n");
-    log(fd, "to short stims = " + sframe + "\n");
-    log(fd, "total frames   = " + output.size + "\n");
-
-    if (diffs.size != 0) {
-        println();
-        log(fd, "\tmean\tsd" + "\n");
-        // This compares an on- and an offset of a stimulus
-        log(fd, "Single stim\t" +
-                mean(diffs)/1000 + "\t" + std(diffs)/1000 + "\n");
-        // This compares the stimuli betwee two onsets or two offsets
-        log(fd, "Double stim\t" +
-                mean(diff_on_off)/1000 + "\t" + std(diff_on_off)/1000 + "\n");
+    if(disp_on.size != disp_off.size ||
+        disp_off.size != spp_on.size ||
+        spp_on.size != spp_off.size)
+    {
+        print_error("Oops not all arrays are of equal size.\n");
+    }
+    
+    i = 0;
+    log(fd, "spp_on\tspp_of\tmon_on\tmon_off\n");
+    while (i < spp_off.size)
+    {
+        log(fd, ""); 
+        if (i < spp_on.size)
+            log(fd, "" + spp_on[i]);
+        log(fd, "\t");
+        if (i < spp_off.size)
+            log(fd, "" + spp_off[i]);
+        log(fd, "\t");
+        if (i < disp_on.size)
+            log(fd, "" + disp_on[i]);
+        log(fd, "\t");
+        if (i < disp_off.size)
+            log(fd, "" + disp_off[i]);
+        log(fd, "\n");
+        i++;
     }
 
     log_fn = log_filename(fd);
@@ -141,20 +120,69 @@ void recordOuput()
     move_file(log_fn, g_fn);
 }
 
-/*************** objects *********/
+/*************** objects ****************/
 
-Teensy teensy {
+SPP spp
+{
+    cleanup()
+    {
+        write_data(0);
+        close();
+    }
+}
 
+Timer spp_timer
+{
+    const int high = 0xFF;
+    const int low  = 0x00;
+
+    int state;
+
+    on_event:expire()
+    {
+        spp.write_data(state);
+        if (state) state = low;
+        else       state = high;
+        
+        int nwin = test_window.target_head;
+        time cur_display = display_device.current_frame_time[nwin];
+
+        dur time_diff = dur(abs(real(event_time) - real(cur_display)));
+
+        if (time_diff > 3.1415ms)
+            // Missed (a/multiple) frame(s), hence sync with expire time
+            start(expire_time + dur(g_stim_dur) / 1000);
+        else
+            // The current display time seems accurate, so use that.
+            start(cur_display + dur(g_stim_dur) / 1000);
+        
+        // this is to easy and might drift.
+        //start(expire_time + dur(g_stim_dur / 1000));
+    }
+}
+
+Teensy teensy
+{
     on_event:init()
     {
     }
 
     on_event:triggered()
     {
-        Output out;
-        out.timestamp   = timestamp;
-        out.logic_level = line_value;
-        append(out);
+        if (line == PHOTO_DIODE_PIN) {
+            Output out;
+            out.timestamp   = timestamp;
+            out.logic_level = line_value;
+            append(out);
+        }
+        else if (line == SPP_PIN) {
+            if (line_value != 0) {
+                array_append(spp_on,  timestamp);
+            }
+            else{
+                array_append(spp_off, timestamp);
+            }
+        }
     }
 
     void append(Output out)
@@ -163,13 +191,9 @@ Teensy teensy {
         output[output.size - 1] = out;
     }
 
-
     on_event:cleanup()
     {
-
-
-        recordOuput();
-
+        recordOutput();
     }
 }
 
@@ -341,6 +365,16 @@ Page test_page
 
         canvas.rect.start_fr(start_frame + g_fps/2 , g_tot_frames);
         teensy.register_input_trigger(PHOTO_DIODE_PIN);
+        teensy.register_input_trigger(SPP_PIN);
+        spp_timer.start(canvas.rect.expected_start_time);
+    }
+}
+
+Timer autostart
+{
+    on_event:expire()
+    {
+        test_page.start_experiment();
     }
 }
 
@@ -349,6 +383,7 @@ start()
     test_window.show_page(test_page);
     test_page.hide_cursor();
     string device = "/dev/ttyACM0";
+    int port_addr = 0;
 
     display_device.open();
     if (error())
@@ -374,11 +409,34 @@ start()
        if (g_fps <= 0)
            terminate "option fps has invalid value, fps must be > 0\n";
     }
+    
+    if (have_option("duration")) {
+        dur test_dur = dur(option_value("duration"));
+        int test_dur_sec = int(test_dur)/1000;
+        if (test_dur_sec == 0)
+            print_error("Invalid duration\n");
+        else
+            g_tot_frames = test_dur_sec * g_fps;
+        println("g_nframes = " + g_tot_frames);
+    }
 
     if(have_option("logfile"))
         g_fn = option_value("logfile");
     else
-        g_fn = "output" + int(1.0/g_fps*1000) + ".txt";
+        g_fn = "output" + int(round(1.0/g_fps*1000)) + ".txt";
+
+    if(have_flag("autostart"))
+        autostart.start(now() + 1.5s);
+
+    // Setup parallel port.
+    spp.open(port_addr);
+    if(!spp.is_open) {
+        println("Unable to open parallel port: " + port_addr);
+        terminate;
+    }
+    spp.data_is_output = true;
+    spp.data_output_mask = 0xFF;
+    spp.write_data(0XFF);
 
     teensy.open(device);
     if(error()) {
